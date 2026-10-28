@@ -1,8 +1,15 @@
 import pytest
 from app.config import Settings
 from app.main import create_app
-from conftest import final
+from conftest import DemoModel, final
 from fastapi.testclient import TestClient
+
+
+def calculate(backend, business_id, request):
+    # Internal fixture setup; production calculations are reachable only through agent tools.
+    return backend[0].state.services.calculate(
+        business_id, request["decision_type"], request["inputs"]
+    )
 
 
 def test_local_workflow_persistence_and_outcomes(backend, seeded):
@@ -10,8 +17,8 @@ def test_local_workflow_persistence_and_outcomes(backend, seeded):
     s, b = seeded
     assert c.get("/api/health").json()["research_enabled"] is False
     baseline = c.get(f"/api/businesses/{b['id']}/baseline").json()
-    assert baseline["revenue"] == 72793 and baseline["variable_costs"] == 23566
-    assert baseline["contribution_profit"] == 49227 and baseline["transactions"] is None
+    assert baseline["revenue"] > 0 and baseline["variable_costs"] is None
+    assert baseline["contribution_profit"] is None and baseline["transactions"] > 0
     assert c.post("/api/demo/seed").json()["id"] == b["id"]
     req = {
         "decision_type": "supplier_switch",
@@ -22,9 +29,8 @@ def test_local_workflow_persistence_and_outcomes(backend, seeded):
             "switching_cost": 400,
         },
     }
-    calc = c.post(f"/api/businesses/{b['id']}/analyses", json=req)
-    assert calc.status_code == 201, calc.text
-    id = calc.json()["id"]
+    calc = calculate(backend, b["id"], req)
+    id = calc["id"]
     d = c.post(
         "/api/decisions",
         json={"business_id": b["id"], "calculation_id": id, "title": "Supplier comparison"},
@@ -56,9 +62,10 @@ def test_local_workflow_persistence_and_outcomes(backend, seeded):
 def test_event_actuals(backend, seeded, repeat, actual, expected, pending):
     _, c, _ = backend
     _, b = seeded
-    calc = c.post(
-        f"/api/businesses/{b['id']}/analyses",
-        json={
+    calc = calculate(
+        backend,
+        b["id"],
+        {
             "decision_type": "promotional_event",
             "inputs": {
                 "event_cost": 500,
@@ -70,7 +77,7 @@ def test_event_actuals(backend, seeded, repeat, actual, expected, pending):
                 "staffing_cost": 100,
             },
         },
-    ).json()
+    )
     d = c.post(
         "/api/decisions",
         json={"business_id": b["id"], "calculation_id": calc["id"], "title": "Event"},
@@ -118,46 +125,29 @@ def test_real_workspace_and_upload_policy(backend, seeded):
     assert c.get("/api/businesses/missing").status_code == 404
 
 
-def test_live_api_disabled_by_default(tmp_path):
-    app = create_app(Settings(data_dir=tmp_path, database_url="sqlite://"))
-    with TestClient(app) as c:
-        b = c.post("/api/demo/seed").json()
-        r = c.post(
-            "/api/runs", json={"business_id": b["id"], "question": "Should I switch suppliers?"}
-        )
-        assert r.status_code == 503 and r.json()["error"]["code"] == "live_api_disabled"
-        assert app.state.executor.jobs == {}
+def test_normal_startup_requires_api_key(tmp_path):
+    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+        create_app(Settings(data_dir=tmp_path, database_url="sqlite://"))
 
 
 def test_sqlite_persists_without_global_import_side_effects(tmp_path):
     settings = Settings(data_dir=tmp_path)
-    with TestClient(create_app(settings)) as c:
+    with TestClient(create_app(settings, DemoModel())) as c:
         b = c.post("/api/businesses", json={"name": "Persistent local business"}).json()
-    with TestClient(create_app(settings)) as c:
+    with TestClient(create_app(settings, DemoModel())) as c:
         assert (
             c.get("/api/businesses/" + b["id"]).json()["data"]["name"]
             == "Persistent local business"
         )
 
 
-def test_unknown_and_nonfinite_financial_inputs(backend, seeded):
+def test_direct_analysis_route_removed(backend, seeded):
     _, c, _ = backend
-    _, b = seeded
-    for value in ["NaN", "Infinity", -1]:
-        r = c.post(
-            f"/api/businesses/{b['id']}/analyses",
-            json={
-                "decision_type": "supplier_switch",
-                "inputs": {
-                    "current_unit_cost": value,
-                    "new_unit_cost": 10,
-                    "monthly_quantity": 100,
-                },
-            },
-        )
-        assert r.status_code == 422
-    r = c.post(f"/api/businesses/{b['id']}/analyses", json={"decision_type": "hire", "inputs": {}})
-    assert r.status_code == 422
+    _, business = seeded
+    path = f"/api/businesses/{business['id']}/analyses"
+    assert c.post(path, json={"decision_type": "supplier_switch", "inputs": {}}).status_code == 404
+    assert "/api/businesses/{id}/analyses" not in c.get("/openapi.json").json()["paths"]
+    assert c.get("/api/health").json()["run_mode"] == "live"
 
 
 def test_http_background_run_and_report(backend, seeded):
@@ -222,9 +212,10 @@ def test_shared_sqlite_connection_is_serialized_across_threads(seeded):
 def test_partial_event_repeats_do_not_claim_time_matched_variance(backend, seeded):
     _, c, _ = backend
     _, b = seeded
-    calc = c.post(
-        f"/api/businesses/{b['id']}/analyses",
-        json={
+    calc = calculate(
+        backend,
+        b["id"],
+        {
             "decision_type": "promotional_event",
             "inputs": {
                 "event_cost": 500,
@@ -236,7 +227,7 @@ def test_partial_event_repeats_do_not_claim_time_matched_variance(backend, seede
                 "staffing_cost": 100,
             },
         },
-    ).json()
+    )
     decision = c.post(
         "/api/decisions",
         json={

@@ -62,9 +62,11 @@ class Services:
                 )
         return s
 
-    def upload(self, business_id, filename, content, sheet=None, *, seeded=False):
+    def upload(self, business_id, filename, content, sheet=None, *, seeded=False, _parsed=None):
         self.business(business_id)
-        parsed = parse_file(filename, content, self.settings, sheet)
+        parsed = (
+            _parsed if _parsed is not None else parse_file(filename, content, self.settings, sheet)
+        )
         folder = self.settings.data_dir / "sources"
         folder.mkdir(parents=True, exist_ok=True)
         name = uuid4().hex + Path(filename).suffix.lower()

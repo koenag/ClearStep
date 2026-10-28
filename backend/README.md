@@ -1,169 +1,163 @@
-# Business Decision Agents — backend
+# Business Decision Agents — live demos
 
-A small FastAPI application with separate OpenAI agent executions, actual embedded MCP tools, provenance-aware input review, and deterministic financial calculations. Backend only; the previous frontend has deliberately not been changed or integrated with this API.
+One demo execution path: OpenAI agents → scoped MCP tools → deterministic financial models.
+There is no offline run mode, mock-model CLI option, or direct-calculation HTTP endpoint.
+Financial arithmetic still executes in Python through the Scenario agent's tools.
 
-## Run
+## Launch a live demo
 
-Python 3.11+ (tested on 3.13). From the repository root:
+From the repository root (`SmallBusinessConsultant`):
 
 ```bash
-python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
-cd backend
-../.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+.venv/bin/python backend/scripts/check_configuration.py
+.venv/bin/python backend/scripts/live_demo.py
 ```
 
-Open http://127.0.0.1:8000/docs. Or run `bash scripts/dev.sh` from the repository root; this installs runtime dependencies and starts only the backend. Use one worker. `--reload` is optional for development; it interrupts active runs.
+If `.venv` does not exist, create it first with `python3 -m venv .venv`.
 
-No key is needed to seed data, parse uploads, calculate financial scenarios, save decisions, or record outcomes. Live agent runs need an API key and explicit enablement. There is no fake/no-key agent in the application. Automated tests inject an explicitly simulated model while executing the real agent runner, MCP handlers, and financial engine.
-
-## Configuration and keys
-
-Copy the root `.env.example` to a root `.env`. Put the OpenAI key there, never in source files, prompts or chat:
+The repository-root `.env` must contain:
 
 ```dotenv
 OPENAI_API_KEY=your-private-key
 OPENAI_MODEL=gpt-6-luna
-LIVE_API_CALLS_ENABLED=false
 RUN_BUDGET_USD=0.10
 ```
 
-`.env` is ignored by Git. Shell variables override `.env`. `DATA_DIR` defaults to `backend/var`; `DATABASE_URL` optionally overrides the SQLite location. `CORS_ORIGINS` is an explicit comma-separated origin list. Research is hard-disabled; no search provider, search key, browser tool, or hosted OpenAI web-search fallback is configured.
+Do not put the key in chat, source files, or command-line arguments. The old
+`LIVE_API_CALLS_ENABLED` setting has been removed; an existing entry is ignored and
+can be deleted. A key is required for normal startup. Every new agent run uses OpenAI
+and may incur charges. Configuration checks and server startup do not invoke the model.
 
-Check configuration without any paid calls:
+The live script automatically loads the fictional café, creates a new run, and waits
+for completion or a stopped state. No API server is required for this command. The
+existing database and previous runs are preserved; the script does not reset them.
+
+To supply a different question:
 
 ```bash
-.venv/bin/python backend/scripts/check_configuration.py
+.venv/bin/python backend/scripts/live_demo.py --question "Should I host a promotional event? Use the accepted fictional inputs."
 ```
 
-To opt into live agent execution, set `LIVE_API_CALLS_ENABLED=true` and restart. A run is created only by an explicit `POST /api/runs` or the live script below. Startup does not invoke OpenAI. The model is `gpt-6-luna` using Responses API function calling and strict structured final output. Other model names are rejected until their pricing and compatibility are deliberately configured.
+The original default question is unchanged. If you want a financial simulation under
+specified operational assumptions, explicitly provide those assumptions. For example:
 
-Pricing estimates use configured standard short-context rates of $0.10/M input tokens, $0.01/M cached input tokens and $0.50/M output tokens. The default estimated run budget is $0.10, not a guaranteed invoice ceiling. Each request reserves an estimate before execution; failed/unknown requests retain that reservation. Reported usage replaces the reservation. Automatic OpenAI retries are disabled. Limits also bound model calls (24), tool calls (60), agent turns (6), context size and run duration (300 seconds). These are application defaults in `config.py`, not claims about provider account limits. Billing, account model access, rate limits and live model behavior have not been verified by the offline tests.
+```bash
+.venv/bin/python backend/scripts/live_demo.py --question "Evaluate switching suppliers using the accepted fictional inputs. For this financial scenario, assume shipping is charged once per month in which an inventory purchase occurs; supplier quality and reliability are equivalent; no cancellation penalties or extra contractual obligations apply; and storage capacity is sufficient with no extra storage cost. Treat these as explicit fictional assumptions, disclose them, and do not present the simulation as a complete operational recommendation."
+```
 
-Official references: [function calling](https://developers.openai.com/api/docs/guides/function-calling), [model/pricing](https://developers.openai.com/api/docs/models/gpt-6-luna), [MCP SDK](https://py.sdk.modelcontextprotocol.io/).
+Only use assumptions you actually intend for the fictional scenario. Risk checks have
+not been weakened: a live run can still block, ask for information, hit a limit, or fail.
+The script returns exit code 0 only for `completed`, otherwise 1, and prints stopped-task
+reasons. A completed financial report is not guaranteed by calling the live API.
 
-## Data policy
+## Inspect inputs and outputs
 
-**Only server-seeded synthetic data is eligible for agent use.** Business creation cannot set the server-managed demo flag. Ordinary uploads are local-only even when attached to the fictional business. Source-reading tools reject ineligible sources, and agent context excludes them. Agent financial tools accept only eligible, explicitly accepted facts. Editable business profile text is not copied into agent context.
-
-User query text and clarification answers are sent to the model for demo runs. The application cannot reliably detect real secrets or financial information typed into those fields. Use fictional queries and answers. This policy is enforced at application boundaries, not an OS sandbox. SQLite and source files are local and unencrypted. The service is unauthenticated and intended for a single user on loopback; it is not ready for public hosting or real multi-tenant records.
-
-## Minimal architecture
+The script prints the run ID and absolute paths to:
 
 ```text
-app/
-  main.py                 App factory, lifecycle and HTTP routes
-  config.py               Settings and safe domain errors
-  contracts.py            Pydantic HTTP/agent/tool/financial contracts
-  db.py                   Scoped SQLite JSON record store; optimistic writes
-  data.py                 CSV/XLSX/TXT/text-PDF adapters and limits
-  service.py              Sources, facts, review, calculations, decisions, actuals
-  demo.py                 Server-controlled fictional sources and assumptions
-  tools.py                Role allowlists, scoped MCP servers, OpenAI schema bridge
-  llm.py                  OpenAI Responses adapter (lazy client, no automatic retries)
-  agents.py               Separate context/history per task; bounded tool loop; usage
-  workflow.py             Plan validation, dependency execution, pause/resume/recovery
-  financial/engine.py     Pure Decimal supplier/event models and scenario generation
-  services/ingestion.py   Sales normalization and deterministic baseline aggregation
-  prompts/                Common rules and one instruction file per agent role
+backend/var/runs/<run_id>/inputs.json
+backend/var/runs/<run_id>/outputs.json
 ```
 
-This intentionally consolidates the earlier implementation map. There are no separate services, task queue, vector store, OpenClaw dependency, agent framework, or unnecessary repository layers. Persisted business/source/fact/run/task/artifact/calculation/decision/outcome/event/usage records share one indexed JSON record table, with typed validation at application boundaries. Source and fact IDs preserve lineage; calculation and decision snapshots are not overwritten by actual outcomes. This new schema uses a new data directory and does not silently import the previous MVP database. There is no database migration framework yet; schema changes need an explicit migration plan. The retained financial implementation is version 2.0.0; future changes must retain compatible calculation code or explicitly migrate version support.
+`DATA_DIR` changes the parent directory if configured.
 
-### Execution flow
+- `inputs.json`: question, model, business ID, eligible source metadata and available facts at launch.
+- `outputs.json`: saved run/report, all task results, questions, risk artifacts, calculations,
+  events, and per-request usage estimates.
+- Exact financial inputs and all scenario outputs are in `outputs.json → calculations[].data.analysis`.
+- Original evidence IDs are in each calculation's `data.lineage`.
+- Blocking risk descriptions are in `artifacts[].data.findings` and stopped task results.
 
-1. API creates a run for the server-seeded demo business.
-2. Orchestrator returns a typed plan; runtime rejects unsupported roles, cycles, unknown dependencies and excess steps. Unsupported questions return `unsupported` without fake calculations.
-3. A supported plan has 4–8 steps: data extraction, a pre-simulation risk check, exactly one Scenario task, and a later risk review. Research cannot be scheduled.
-4. Each task receives its own prompt, relevant dependency results and scoped MCP client/server. No task inherits another task's raw model conversation.
-5. The OpenAI model requests a function call; the bridge checks the allowlist/schema, invokes MCP, and returns structured output. All response items needed for reasoning continuity are replayed in memory. Hidden reasoning is not recorded in application events.
-6. Document-extracted numerical candidates remain unaccepted. Runtime pauses for review even if the parser mistakenly claims completion. Accept, reject, or supply a canonical-unit value through `/answers`.
-7. Scenario tools require accepted fact IDs for **every** model input, including explicit default/sensitivity assumptions. They do not accept arbitrary numbers from the model. Missing inputs pause the run. Canonical units must already match; ambiguous conversions require user input.
-8. Material `review_required` risk findings block completion. No arbitrary financial formulas or unsupported contract modeling are invented.
-9. Final financial summary, scenario tables and chart-ready series come from the calculation snapshot. Orchestrator commentary is separate, model-generated qualitative text.
-10. Saved decisions reference the selected scenario and original snapshot. Actual observations are stored separately.
+These exports are not full model request/response transcripts. Raw tool arguments/results
+and model reasoning are not newly recorded. Export files contain no API key. Only
+AI-eligible demo sources/facts are exported as available inputs, even if local-only files
+were uploaded to the same business.
 
-Tasks execute serially for simplicity. Different runs have independent histories and scopes. A clarification answer resets execution tasks so downstream calculations are recomputed from the new fact versions; old calculation snapshots remain stored. Completed artifacts can be reused on failed/interrupted run retry. Facts changed since simulation are detected before publishing a report.
+To inspect a finished run through HTTP, start the API:
 
-The runtime stores observable tasks, tool names, status changes, safe errors, and token usage. It does not store raw model reasoning or print keys. On restart, active runs become `interrupted`; retry is explicit. In-process jobs are not crash-durable workers. Shutdown cancels them cleanly. `limit_reached` and materially blocked runs cannot be silently restarted to evade limits.
-
-### Agent tools
-
-- **Orchestrator:** scoped context and artifact retrieval. Plans and synthesis are structured final outputs, not recursive agent calls inside an MCP handler.
-- **Data Parser:** eligible sources/excerpts, facts, candidate submission and clarification requests.
-- **Risk:** evidence/artifact retrieval, risk findings and clarification requests. No financial execution tools.
-- **Scenario:** accepted facts/artifacts, deterministic supplier/event tools and clarification requests. No source mutation or candidate acceptance.
-- **Research:** disabled; no external research tools or provider adapter.
-
-MCP is embedded in memory through the installed SDK's actual protocol layer. It is not a direct Python function dispatcher pretending to be MCP. The bridge closes input schemas for OpenAI strict mode, validates calls locally, and scopes each server to one role and run. Moving to stdio/HTTP later requires explicit transport/authentication work; no public `/mcp` endpoint is exposed now.
-
-## Files and baseline
-
-Supported: UTF-8 CSV/TXT, XLSX, and text-based PDF. Maximum upload 5 MB, table 20,000 rows/100 columns, PDF 50 pages, extracted text 150,000 characters. Invalid rows produce warnings with ending CSV line numbers. Dates must be unambiguous ISO dates/datetimes. Duplicate normalized headers, missing required columns, NaN/infinite/negative quantities/prices, empty documents and invalid formats are rejected.
-
-Sales schema:
-
-```csv
-date,product,quantity,unit_price,unit_cost
-2026-08-01,Latte,15,5.50,1.80
+```bash
+cd backend
+../.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-Aliases include qty/price/cost/product_name/sale_date/order_id. Transaction counts require populated transaction IDs on all accepted rows; line items are never treated as unique transactions. Fixed expenses and net profit are unavailable. Monthly totals represent recorded dates without extrapolation. The latest uploaded sales file is a replacement baseline; uploads are not automatically merged.
+Open http://127.0.0.1:8000/docs. Use the same `.env`, `DATA_DIR`, and database as the script.
+Run one execution host at a time against a database: don't launch the CLI while another
+process has an active analysis in that database. For server-hosted runs, use `POST /api/runs`.
 
-For multi-sheet XLSX, send an explicit `sheet` form field. Formula cells are rejected: export calculated values first. Macros are not supported or executed. Expanded ZIP limits protect against oversized workbooks. TXT/PDF extraction preserves line/page references. PDF table extraction is best-effort text only; scanned and encrypted documents are unsupported. Ambiguous numerical extractions require explicit confirmation. Real uploaded content is parsed locally but remains inaccessible to agents under the current data policy.
-
-## Financial conventions
-
-Supplier purchasing: zero opening stock, constant monthly demand per scenario, order the greater of shortage and minimum order when needed, carry remaining inventory, FIFO consumption, shipping once per purchasing month. No storage/spoilage/financing costs or terminal resale credit. Cash spend and consumed inventory are kept separate. Effective annual cost escalation compounds monthly. Net benefit compares purchasing cash flows and subtracts switching cost once. ROI uses switching cost as its explicitly stated investment basis; zero investment yields undefined ROI. Payback must remain nonnegative for the rest of the horizon, so an early crossing reversed by a bulk order is not sustained break-even.
-
-Event contribution: incremental visits × spend × margin, plus assumed retained customers' cumulative repeat contribution, minus event and additional staffing expenses once. Repeat purchase timing is not invented. Break-even visits round up. Scenarios are editable sensitivities, not calibrated probabilities or validated acquisition predictions.
-
-All authoritative monetary arithmetic uses Decimal; API monetary outputs use ROUND_HALF_UP to cents. Small rounding differences can exist between rounded monthly lines and aggregate totals. Sales product units retain their quantity precision. USD only; no currency conversion. Procurement-unit demand is supplied explicitly, never inferred from café cups sold.
-
-Actual supplier savings compare the original selected month's procurement savings before switching cost. Event actual contribution uses original margin × actual incremental revenue − actual total costs; blank repeat contribution leaves repeats pending and compares event-only figures. Explicit repeat contribution at the horizon compares against the full projection. If repeat contribution is observed before the horizon, variance is left null and the comparison is labeled not time-comparable; no monthly repeat forecast is invented. One observation per supplier month or one cumulative event observation is supported; editing/deleting observations is deferred. Attendance/revenue are user-attributed incremental figures, not proof of causality.
-
-## API and demo
-
-All stored objects use `{id, kind, business_id, run_id, revision, created_at, data}`. Errors use `{error: {code, message}}`. Request schemas and endpoint details are in `/docs`.
+Useful endpoints:
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/health` | Readiness, model, policy and disabled research |
-| POST/GET | `/api/businesses` | Create/list local businesses |
-| GET | `/api/businesses/{id}` | Business |
-| POST | `/api/demo/seed` | Idempotently load the fictional café |
-| POST/GET | `/api/businesses/{id}/sources` | Multipart upload/list metadata |
-| GET | `/api/businesses/{id}/baseline` | Latest sales baseline |
-| GET | `/api/businesses/{id}/facts` | Facts and review states |
-| POST | `/api/businesses/{id}/analyses` | Deterministic structured-input analysis; no LLM |
-| GET | `/api/calculations/{id}` | Original calculation and lineage |
-| POST | `/api/runs` | Start a live agent run; returns 202 |
-| GET | `/api/runs/{id}` | State, tasks, questions, report and usage |
-| GET | `/api/runs/{id}/events` | Observable execution progress |
-| POST | `/api/runs/{id}/answers` | Accept/reject candidates or supply values; resume when resolved |
+| GET | `/api/health` | Mode `live`, model, policy, limits |
+| POST | `/api/demo/seed` | Initialize fictional input data; this does not execute an analysis |
+| GET | `/api/businesses` | Find the fictional business ID |
+| POST | `/api/runs` | Start a live analysis, returning 202 and its run ID |
+| GET | `/api/runs/{id}` | Status, plan, tasks, questions, usage, final report |
+| GET | `/api/runs/{id}/events` | Tool names and task transitions |
+| POST | `/api/runs/{id}/answers` | Resolve clarification questions and resume |
 | POST | `/api/runs/{id}/cancel` | Cancel an active/waiting run |
 | POST | `/api/runs/{id}/retry` | Retry failed/interrupted work within existing limits |
+| GET | `/api/businesses/{id}/facts` | Input facts and acceptance states |
+| GET | `/api/businesses/{id}/sources` | Source metadata |
+| GET | `/api/businesses/{id}/baseline` | Recorded sales baseline |
+| GET | `/api/calculations/{id}` | Saved financial inputs, scenarios, lineage |
 | POST/GET | `/api/decisions` | Save/list original forecasts |
 | GET/PATCH | `/api/decisions/{id}` | Reopen/update status |
-| POST/GET | `/api/decisions/{id}/outcomes` | Record/list actual observations |
+| POST/GET | `/api/decisions/{id}/outcomes` | Record/list actual outcomes |
 
-Start by invoking `POST /api/demo/seed` in `/docs`. Copy its business ID. `POST /api/businesses/{id}/analyses` accepts:
-
-```json
-{"decision_type":"supplier_switch","inputs":{"current_unit_cost":12,"new_unit_cost":10,"monthly_quantity":100,"current_shipping":40,"new_shipping":50,"switching_cost":400}}
-```
-
-Expected base result: $190 average monthly savings, $1,880 net benefit over 12 months, sustained payback in month 3. Save using `POST /api/decisions` with business_id, calculation_id and title. Record month 1 actual_savings of 175: variance −$15 versus the original $190. The event demo defaults yield $332.80 net benefit. Fictional sales: $72,793 revenue − $23,566 variable costs = $49,227 contribution profit; 15,235 units over July–September 2026.
-
-A live run request is `{"business_id":"<seeded ID>","question":"Should I switch coffee bean suppliers?"}`. Ordinary created businesses are rejected by AI policy even with a key. Poll `/api/runs/{id}`. Clarification answers look like:
+A server-hosted run body is:
 
 ```json
-{"answers":[{"question_id":"<id>","value":"9.50","unit":"USD/unit"}]}
+{"business_id":"<seeded business ID>","question":"Should I switch coffee bean suppliers?"}
 ```
 
-For extracted candidates use `accept_candidate:true` or `reject_candidate:true` instead of a value. Multiple conflicting candidates can be accepted/rejected explicitly, but only one accepted value per field is allowed in an answer batch. Review is transactional.
+The CLI writes exports automatically; HTTP-created runs are inspected through the API
+and persisted SQLite records. `blocked` remains terminal; it is not silently approved
+or retried. Create a new run with clarified assumptions when appropriate.
 
-## Tests
+## Architecture retained
+
+- `config.py`: required key, model and execution limits.
+- `main.py`: FastAPI factory, lifecycle and routes; no standalone analysis endpoint.
+- `agents.py`, `llm.py`, `tools.py`: independent role contexts/history, real OpenAI Responses,
+  actual embedded MCP discovery/invocation, role-specific allowlists, usage accounting.
+- `workflow.py`: validated dependency plans, serial task execution, clarification/resume,
+  cancellation, interruption recovery, and limits.
+- `data.py`, `services/ingestion.py`, `service.py`: source parsing, baseline metrics, evidence
+  review, accepted facts, calculation persistence and actual outcomes.
+- `financial/engine.py`: Decimal supplier and event models. Python arithmetic is not a
+  non-live demo mode; it is the authoritative tool implementation used by live agents.
+- `db.py`: scoped SQLite JSON records and serialized short transactions.
+- `demo.py`: controlled fictional business inputs, never canned agent responses.
+- `prompts/`: common instructions and role-specific instructions. Research remains disabled.
+
+The source store, existing runs, calculation semantics, prompts, financial engine,
+review requirements, risk blocking, and frontend were not changed by the live-only update.
+
+## Data policy and limits
+
+Live refers to real API execution, not permission to transmit real business records.
+Only server-seeded fictional data is AI-eligible. Ordinary uploads remain local-only.
+CSV, XLSX, UTF-8 TXT, and text-based PDF parsing remain supported. No OCR, live database
+connector, search provider, or hosted web-search fallback is configured. User query text
+and clarification answers are sent to OpenAI, so use fictional content in those fields.
+
+The backend is single-user, local-only and unauthenticated. Bind to loopback. SQLite/source
+files are unencrypted. No production hosting, multi-tenancy, migrations or durable worker
+queue is implemented. Background jobs interrupted by restart require explicit retry.
+
+Financial inputs must have accepted provenance and canonical units. Numerical document
+extractions require review. Missing/contradictory values are not silently invented. Risk
+findings can block. Monthly event-repeat timing is not invented; partial repeat observations
+are not given a misleading time-matched variance. Saved forecasts are not overwritten.
+
+The default estimated budget remains $0.10/run, with request/tool/context/time limits.
+Usage estimates are not invoice guarantees; failed requests may have unknown usage.
+OpenAI account access and output quality require actual live evaluation. See
+[official model pricing](https://developers.openai.com/api/docs/models/gpt-6-luna).
+
+## Verification and tests
 
 ```bash
 .venv/bin/pip install -r backend/requirements-dev.txt
@@ -173,18 +167,32 @@ cd ..
 .venv/bin/ruff check backend
 ```
 
-Unit/API tests use temporary databases and files. Agent tests use an explicit simulated model with real MCP discovery/invocation, permissions and calculations. OpenAI adapter tests use the installed SDK with mocked HTTP responses, including request serialization, sanitized errors and no automatic retry. No automated test makes a paid/provider request. Tests cover financial expectations, file types/limits, data policy, source evidence, review/conflicts, workflow dependencies, interruption/cancellation, usage estimates, persistence and actual outcomes.
+Automated tests still replace the provider boundary to avoid spending credits. Those test
+fixtures are not an application/demo mode and cannot be selected through CLI, environment,
+or HTTP. Tests exercise real MCP handlers, orchestration and calculations. Nothing silently
+falls back to simulated responses in production. No paid run was launched as part of the
+live-only cleanup. See [VERIFICATION.md](VERIFICATION.md).
 
-An optional **paid live integration check** is available after configuring and explicitly enabling live calls:
+Expected tool-validation failures are returned as MCP errors with their application
+code and a safe message. For `invalid_evidence_reference`, the Risk agent must retrieve
+facts/sources again and copy exact returned IDs before resubmitting. No findings are
+saved for a failed submission. Out-of-scope references remain unavailable; genuine
+internal bugs still produce diagnostic logs and a generic model-facing error.
 
-```bash
-.venv/bin/python backend/scripts/live_demo.py
-```
+## Revised, inspectable business-record demo
 
-This uses only the seeded fictional café. It is not run as part of this implementation's offline verification. It may stop for clarification or fail if the chosen model does not follow the contracts; inspect the run state rather than assume success. The token cost estimates do not guarantee model quality or account access.
+The current fixture bundle is documented in [demo_data/coffee_shop/README.md](demo_data/coffee_shop/README.md).
+Open [the local preview](demo_data/coffee_shop/index.html) to see the raw records and
+normalized inputs. It replaces the old generated daily product totals and single
+assumptions file for **new** demo runs. Existing historical runs are preserved.
 
-## Deliberate limits
+The bundle uses a receipt-level POS CSV without product costs, supplier invoice text
+copies, a supplier quote email and informal owner notes. The POS baseline now leaves
+COGS/profit/margin unavailable instead of inventing costs. Generic CSV/XLSX tables are
+retained as evidence without inferring an unsupported financial baseline. Known POS
+and legacy cost-enriched sales schemas receive deterministic aggregation.
 
-No frontend integration, OCR, database/accounting connectors, web research, autonomous financial actions, arbitrary decision models, production authentication, migrations, background worker infrastructure or durable distributed execution. No automatic plan-revision loop: invalid plans fail safely; clarification retries execute the same validated plan. Material unmodeled risk stops the run. Qualitative agent commentary is not fully fact-verifiable by deterministic code. Inspect output quality with live synthetic evaluations before considering broader use.
-
-Detailed executed results are recorded in [VERIFICATION.md](VERIFICATION.md). To rerun the non-LLM HTTP smoke test against an already running server, use `.venv/bin/python backend/scripts/http_smoke.py` from the repository root. This creates fictional calculation/decision/outcome records but does not start agent runs.
+Use `GET /api/businesses/{id}/sources/{source_id}` for the actual stored source contents.
+The CLI prints the preview path and records the fixture version/fingerprint in inputs.json.
+The fixture's explicit source-to-field index remains prepared demo wiring; general document
+extraction, agent structure, financial formulas and supported decision types are unchanged.

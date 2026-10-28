@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from app.agents import AgentRunner
 from app.config import DomainError, Settings
 from app.contracts import (
-    AnalyzeRequest,
     Answers,
     BusinessCreate,
     DecisionCreate,
@@ -28,7 +27,8 @@ from app.workflow import Executor
 
 def create_app(settings=None, model=None):
     settings = settings or Settings.from_env()
-    settings.validate()
+    # Model injection is test-only; normal startup always requires the live provider key.
+    settings.validate(require_api_key=model is None or isinstance(model, OpenAIModel))
     store = Store(settings)
     services = Services(store, settings)
     model = model or OpenAIModel(settings)
@@ -82,7 +82,7 @@ def create_app(settings=None, model=None):
         return {
             "status": "ok",
             "model": settings.openai_model,
-            "live_api_calls_enabled": settings.live_api_calls_enabled,
+            "run_mode": "live",
             "research_enabled": False,
             "ai_data_policy": "seeded_demo_only",
             "formats": ["csv", "xlsx", "txt", "text_pdf"],
@@ -117,6 +117,11 @@ def create_app(settings=None, model=None):
         services.business(id)
         return [services.source_view(s) for s in store.list("source", id)]
 
+    @app.get("/api/businesses/{id}/sources/{source_id}")
+    def source_content(id: str, source_id: str):
+        source = services.source(source_id, id)
+        return {**services.source_view(source), "chunks": source["data"]["chunks"]}
+
     @app.get("/api/businesses/{id}/baseline")
     def baseline(id: str):
         services.business(id)
@@ -129,12 +134,6 @@ def create_app(settings=None, model=None):
 
     @app.post("/api/runs", status_code=202)
     async def run(req: RunRequest):
-        if not settings.live_api_calls_enabled and isinstance(model, OpenAIModel):
-            raise DomainError(
-                "live_api_disabled",
-                "Agent runs require OPENAI_API_KEY and explicit LIVE_API_CALLS_ENABLED=true. Deterministic analysis remains available.",
-                503,
-            )
         record = executor.create_run(req)
         executor.schedule(record["id"])
         return record
@@ -181,10 +180,6 @@ def create_app(settings=None, model=None):
     @app.post("/api/runs/{id}/retry", status_code=202)
     async def retry(id: str):
         return executor.schedule(id)
-
-    @app.post("/api/businesses/{id}/analyses", status_code=201)
-    def analyze(id: str, req: AnalyzeRequest):
-        return services.calculate(id, req.decision_type, req.inputs, req.provenance)
 
     @app.get("/api/calculations/{id}")
     def calculation(id: str):

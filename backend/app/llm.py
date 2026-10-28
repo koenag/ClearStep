@@ -1,4 +1,4 @@
-"""OpenAI adapter. Construction is lazy and disabled unless explicitly configured."""
+"""Live OpenAI adapter. No fallback model or offline execution mode."""
 
 import json
 from dataclasses import dataclass
@@ -26,12 +26,8 @@ class OpenAIModel:
         self.client = None
 
     async def respond(self, *, instructions, history, tools):
-        if not self.settings.live_api_calls_enabled:
-            raise DomainError(
-                "live_api_disabled",
-                "Live API calls are disabled. Set LIVE_API_CALLS_ENABLED=true explicitly.",
-                503,
-            )
+        if not self.settings.openai_api_key.strip():
+            raise DomainError("missing_api_key", "Set OPENAI_API_KEY before running agents.", 503)
         if self.client is None:
             self.client = AsyncOpenAI(
                 api_key=self.settings.openai_api_key, max_retries=0, timeout=45

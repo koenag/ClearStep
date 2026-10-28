@@ -1,20 +1,70 @@
-# Backend verification
+# Realistic business-record demo update — October 28, 2026
 
-Executed October 28, 2026 with Python 3.13.7. Installed integration versions: MCP SDK 2.3.0, OpenAI SDK 2.54.0. Exact environment versions are recorded in requirements.lock.txt.
+- Backend suite: **82 passed** (22.67 seconds); Ruff passed.
+- Preview opened in headless Chrome and visually inspected: local source links,
+  POS preview, complete invoice/email/owner-note content, and normalized fact table.
+- Independent CSV reconciliation: $57,855.75 net sales, 11,478 lines, 8,297 receipts.
+- Tests verify revenue after discounts/excluding tax, unknown product costs/margin,
+  generic table retention without fake baseline metrics, source quotations/provenance,
+  deterministic fixture rebuilding, versioned seeds, preservation of historical runs,
+  validation before database writes, and scoped source-content retrieval.
+- Supplier and event model base results remain $1,880 and $332.80 under the prepared,
+  explicitly labeled input assumptions. Existing model/agent regression tests passed.
+- No paid model call was launched. No general document-extraction capability is claimed.
 
-- `cd backend && ../.venv/bin/python -m pytest -q`: **68 passed**, repeated three consecutive times after the SQLite synchronization fix (1.57s, 1.52s, 1.61s).
-- `.venv/bin/ruff check backend`: **all checks passed**.
-- `.venv/bin/python -m compileall -q backend/app backend/scripts`: **passed**.
-- `.venv/bin/pip check`: **no broken requirements**.
-- `.venv/bin/python backend/scripts/check_configuration.py`: configuration valid, model gpt-6-luna, key absent, live calls disabled, research disabled, demo-only AI policy.
-- Actual localhost HTTP smoke test: **passed** for health, seeding, reconciled sales baseline, supplier/event arithmetic, save/reopen, actual savings variance and OpenAPI.
+Earlier verification below describes preceding versions.
 
-Agent tests execute the actual embedded MCP protocol, role-specific tool permissions, financial handlers, and workflow runtime with an explicitly simulated model. The installed OpenAI SDK is exercised against mocked HTTP responses, not a paid provider call. Tests cover schema conversion, request serialization, incomplete output, error sanitization, and preservation/accounting of tool-loop state.
+# Evidence-reference error fix — October 28, 2026
 
-Coverage includes CSV/XLSX/TXT/text-PDF parsing, invalid/encrypted/scanned files, file/expansion limits, transaction semantics, source evidence, confirmation/rejection of conflicting candidates, scope/privacy enforcement, hand-calculated financial cases, dependency validation, clarification/resume, failed/interrupted retries, cancellation/timeouts, budget/tool limits, immutable forecasts, actual-outcome comparisons and SQLite persistence.
+- Backend suite: **76 passed** (3.73 seconds); Ruff passed.
+- Actual embedded MCP regression checks confirm expected application failures return
+  `is_error=True` without unexpected-exception tracebacks.
+- Missing or inaccessible risk evidence returns `invalid_evidence_reference` with
+  instructions to retrieve exact IDs. Invalid batches write no risk artifact.
+- Tests cover correcting and resubmitting a reference, cross-business facts,
+  cross-run artifacts, local-only sources, and a genuine internal exception that
+  remains logged while its details stay out of model-facing results.
+- Changed app/tools.py, prompts/risk.md and tests/test_tools.py. No financial formulas,
+  acceptance rules, scope permissions, saved data or run limits were changed.
+- No paid model run was launched. Live model recovery is prompted and supported by
+  the tool response, not guaranteed by offline tests.
 
-An intermittent native SQLite crash was found during concurrent background/HTTP test execution. Repository reads and transactions are now serialized with a reentrant lock; a regression test executes 100 write/read operations across eight threads. The final full suite passed three consecutive runs. No model/network request is performed while holding a repository transaction.
+The earlier verification below describes the preceding live-only cleanup.
 
-No live OpenAI call was made, no API key was read out or printed, no real uploaded records were transmitted, no search provider was configured, and no deployment was performed. Model account access and real-model planning/output quality remain unverified. Use scripts/live_demo.py only after deliberately configuring the key and enabling paid calls.
+# Live-only update verification — October 28, 2026
 
-The frontend was not modified or tested. It uses the previous API and is not integrated with this backend.
+- Backend automated suite: **71 passed** (6.49 seconds).
+- `ruff check backend`: all checks passed.
+- Configuration check: key configured, model gpt-6-luna, run mode live, research disabled, seeded-demo-only data policy, estimated budget $0.10/run. The key itself was not printed.
+- Live CLI `--help`: only `--question` and help options; no offline/dry-run/simulated mode.
+- No paid OpenAI request was launched or rerun during this cleanup.
+
+Regression coverage includes fail-fast missing-key startup, rejection/removal of the old
+standalone analysis route (404 and absent from OpenAPI), real embedded MCP execution,
+financial calculations, review/resume, persistence, outcome tracking and scope enforcement.
+New live-entry tests verify input/output exports, exclusion of credentials, and honest
+blocked results without fabricated financial outputs.
+
+Tests replace provider boundaries to avoid charges. These test doubles are not selectable
+through application environment variables, HTTP, or the live CLI. They do not establish
+real-model quality or guarantee that a live question completes without clarification.
+
+## Exact scope of the cleanup
+
+Changed runtime files:
+- app/config.py: removed the live/offline setting; a key is required for normal startup.
+- app/main.py: removed direct-analysis HTTP execution; health reports run_mode=live.
+- app/llm.py: removed the disabled-mode branch; missing keys fail rather than falling back.
+- app/contracts.py: removed the standalone AnalyzeRequest contract.
+- scripts/check_configuration.py: reports live mode instead of an enablement toggle.
+- scripts/live_demo.py: added --question, run-ID/input-path output, inputs.json/outputs.json
+  exports and stopped-task reasons. Default question remains unchanged.
+- ../.env.example: removed LIVE_API_CALLS_ENABLED; the user's private .env was not edited.
+
+Deleted redundant alternate demo scripts:
+- scripts/http_smoke.py (non-agent calculation demonstration).
+- scripts/seed_demo.py (standalone seed helper; input seeding remains internal/API setup).
+
+Updated tests and documentation. Financial engine, agent prompts, tool permissions,
+source-data policy and existing database records were not changed. No auto-unblocking,
+risk override, research provider, frontend change or full model-transcript recording was added.

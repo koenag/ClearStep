@@ -1,0 +1,54 @@
+RIVERBEND ROASTERS - FICTIONAL INVOICE
+Invoice: RR-2026-07-JC
+Invoice / delivery date: 2026-07-01
+Bill to: Juniper Coffee
+
+House Espresso, packed in 5 lb bags
+Quantity: 20 bags / 100 lb
+Rate: $12.00 per lb ($60.00 per 5 lb bag)
+Coffee subtotal: $1,200.00
+Delivery - one shipment: $40.00
+Tax shown on this fictional invoice: $0.00
+TOTAL: $1,240.00
+Paid by bank transfer on 2026-07-08.
+
+Terms: minimum order 10 bags (50 lb). Delivery is charged per shipment,
+not per bag. No subscription or fixed-term supply agreement.
+
+--- next invoice ---
+
+RIVERBEND ROASTERS - FICTIONAL INVOICE
+Invoice: RR-2026-08-JC
+Invoice / delivery date: 2026-08-01
+Bill to: Juniper Coffee
+
+House Espresso, packed in 5 lb bags
+Quantity: 22 bags / 110 lb
+Rate: $12.00 per lb ($60.00 per 5 lb bag)
+Coffee subtotal: $1,320.00
+Delivery - one shipment: $40.00
+Tax shown on this fictional invoice: $0.00
+TOTAL: $1,360.00
+Paid by bank transfer on 2026-08-08.
+
+Terms: minimum order 10 bags (50 lb). Delivery is charged per shipment,
+not per bag. No subscription or fixed-term supply agreement.
+
+--- next invoice ---
+
+RIVERBEND ROASTERS - FICTIONAL INVOICE
+Invoice: RR-2026-09-JC
+Invoice / delivery date: 2026-09-01
+Bill to: Juniper Coffee
+
+House Espresso, packed in 5 lb bags
+Quantity: 18 bags / 90 lb
+Rate: $12.00 per lb ($60.00 per 5 lb bag)
+Coffee subtotal: $1,080.00
+Delivery - one shipment: $40.00
+Tax shown on this fictional invoice: $0.00
+TOTAL: $1,120.00
+Paid by bank transfer on 2026-09-08.
+
+Terms: minimum order 10 bags (50 lb). Delivery is charged per shipment,
+not per bag. No subscription or fixed-term supply agreement.

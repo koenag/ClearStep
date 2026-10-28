@@ -193,7 +193,11 @@ async def test_unreviewed_extraction_cannot_be_ignored(backend, seeded):
     services, b = seeded
     from app.contracts import FactCandidate
 
-    source = next(s for s in services.store.list("source", b["id"]) if s["data"]["format"] == "txt")
+    source = next(
+        s
+        for s in services.store.list("source", b["id"])
+        if s["data"]["filename"] == "alternative_supplier_quote_email.txt"
+    )
     services.submit_candidate(
         b["id"],
         FactCandidate(
@@ -203,7 +207,7 @@ async def test_unreviewed_extraction_cannot_be_ignored(backend, seeded):
             unit="USD/unit",
             source_id=source["id"],
             location=source["data"]["chunks"][0]["location"],
-            evidence="new_unit_cost = 10 USD/unit",
+            evidence="(equivalent to $10.00 per lb).",
         ),
     )
     run = app.state.executor.create_run(

@@ -60,9 +60,7 @@ async def test_actual_openai_sdk_serialization_without_network(settings):
         )
 
     transport = httpx.MockTransport(handler)
-    model = OpenAIModel(
-        replace(settings, live_api_calls_enabled=True, openai_api_key="synthetic_test_key")
-    )
+    model = OpenAIModel(replace(settings, openai_api_key="synthetic_test_key"))
     model.client = AsyncOpenAI(
         api_key="synthetic_test_key",
         http_client=httpx.AsyncClient(transport=transport),
@@ -102,9 +100,7 @@ async def test_provider_error_is_sanitized_and_not_retried(settings):
             },
         )
 
-    model = OpenAIModel(
-        replace(settings, live_api_calls_enabled=True, openai_api_key="synthetic_test_key")
-    )
+    model = OpenAIModel(replace(settings, openai_api_key="synthetic_test_key"))
     model.client = AsyncOpenAI(
         api_key="synthetic_test_key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
@@ -119,9 +115,9 @@ async def test_provider_error_is_sanitized_and_not_retried(settings):
 
 
 @pytest.mark.asyncio
-async def test_live_disabled_never_constructs_a_client(settings):
+async def test_missing_key_never_constructs_a_client(settings):
     model = OpenAIModel(settings)
-    with pytest.raises(DomainError, match="disabled"):
+    with pytest.raises(DomainError, match="OPENAI_API_KEY"):
         await model.respond(instructions="test", history=[], tools=[])
     assert model.client is None
 
@@ -162,7 +158,7 @@ async def test_incomplete_provider_response_never_executes_a_partial_call(settin
         payload["incomplete_details"] = {"reason": "max_output_tokens"}
         return httpx.Response(200, json=payload)
 
-    model = OpenAIModel(replace(settings, live_api_calls_enabled=True, openai_api_key="test_key"))
+    model = OpenAIModel(replace(settings, openai_api_key="test_key"))
     model.client = AsyncOpenAI(
         api_key="test_key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),

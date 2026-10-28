@@ -3,13 +3,17 @@
 import hashlib
 import json
 from dataclasses import dataclass
+from functools import wraps
 from typing import Any
 
 from mcp import Client
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from app.config import DomainError
 from app.contracts import FactCandidate, InputRef, Question, RiskFinding
+
+DOMAIN_ERROR_MARKER = "BUSINESS_TOOL_ERROR: "
 
 ROLE_TOOLS = {
     "orchestrator": {"get_context", "get_artifact"},
@@ -83,8 +87,17 @@ def create_server(services, scope: ToolScope):
 
     def register(fn):
         if fn.__name__ in allowed:
-            # Pydantic return contracts generate a structured MCP response.
-            server.tool(structured_output=True)(fn)
+
+            @wraps(fn)
+            def guarded(*args, **kwargs):
+                try:
+                    return fn(*args, **kwargs)
+                except DomainError as exc:
+                    # Expected application failures are MCP tool errors, not SDK crashes.
+                    payload = {"error": {"code": exc.code, "message": exc.message}}
+                    raise ToolError(DOMAIN_ERROR_MARKER + json.dumps(payload)) from None
+
+            server.tool(structured_output=True)(guarded)
         return fn
 
     def artifact(id):
@@ -211,14 +224,26 @@ def create_server(services, scope: ToolScope):
                     "evidence_required", "Risk findings need source/fact/artifact references."
                 )
             for id in finding.evidence_ids:
-                if id.startswith("source_"):
-                    services.source(id, scope.business_id, for_ai=True)
-                elif id.startswith("fact_"):
-                    f = services.store.get(id, "fact", scope.business_id)
-                    if not f["data"]["ai_eligible"]:
-                        raise DomainError("ai_policy_denied", "Fact is local-only.", 403)
-                else:
-                    artifact(id)
+                try:
+                    if id.startswith("source_"):
+                        services.source(id, scope.business_id, for_ai=True)
+                    elif id.startswith("fact_"):
+                        f = services.store.get(id, "fact", scope.business_id)
+                        if not f["data"]["ai_eligible"]:
+                            raise DomainError("ai_policy_denied", "Fact is local-only.", 403)
+                    else:
+                        artifact(id)
+                except DomainError as exc:
+                    if exc.code == "not_found":
+                        raise DomainError(
+                            "invalid_evidence_reference",
+                            f"Evidence ID {id!r} is unavailable in this scope. "
+                            "Call get_facts or get_context for facts/sources, or get_artifact "
+                            "for a current-run artifact. Copy an exact returned ID and "
+                            "resubmit the findings. Field names and guessed/truncated IDs "
+                            "are not evidence IDs. No findings were saved.",
+                        ) from None
+                    raise
         data = {
             "type": "risk",
             "findings": [f.model_dump() for f in findings],
@@ -285,7 +310,25 @@ class ToolSession:
             ) from exc
         result = await self.client.call_tool(name, arguments)
         if result.is_error:
-            # Do not leak SDK internals, paths, or provider responses to the model.
+            # Only decode the application-owned error envelope; arbitrary SDK errors
+            # remain generic so unexpected failures cannot leak internal details.
+            for content in result.content:
+                if content.type != "text":
+                    continue
+                _, marker, encoded = content.text.partition(DOMAIN_ERROR_MARKER)
+                if marker:
+                    try:
+                        payload = json.loads(encoded)
+                    except ValueError:
+                        continue
+                    if (
+                        isinstance(payload, dict)
+                        and set(payload) == {"error"}
+                        and isinstance(payload["error"], dict)
+                        and set(payload["error"]) == {"code", "message"}
+                        and all(isinstance(v, str) for v in payload["error"].values())
+                    ):
+                        return payload
             return {
                 "error": {
                     "code": "tool_failed",

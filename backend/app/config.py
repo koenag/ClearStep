@@ -16,7 +16,6 @@ class Settings:
     database_url: str | None = None
     openai_model: str = "gpt-6-luna"
     openai_api_key: str = field(default="", repr=False)
-    live_api_calls_enabled: bool = False
     max_upload_bytes: int = 5 * 1024 * 1024
     max_rows: int = 20000
     max_pdf_pages: int = 50
@@ -41,20 +40,21 @@ class Settings:
             database_url=env.get("DATABASE_URL") or None,
             openai_model=env.get("OPENAI_MODEL") or "gpt-6-luna",
             openai_api_key=env.get("OPENAI_API_KEY") or "",
-            live_api_calls_enabled=(env.get("LIVE_API_CALLS_ENABLED") or "false").lower() == "true",
             run_budget_usd=Decimal(env.get("RUN_BUDGET_USD") or "0.10"),
             cors_origins=tuple((env.get("CORS_ORIGINS") or ",".join(cls.cors_origins)).split(",")),
         )
 
-    def validate(self):
+    def validate(self, *, require_api_key=True):
         if not self.run_budget_usd.is_finite() or self.run_budget_usd <= 0:
             raise ValueError("RUN_BUDGET_USD must be finite and positive.")
         if self.openai_model != "gpt-6-luna":
             raise ValueError(
                 "Only gpt-6-luna pricing is configured. Add verified pricing before switching models."
             )
-        if self.live_api_calls_enabled and not self.openai_api_key:
-            raise ValueError("Set OPENAI_API_KEY before enabling live API calls.")
+        if require_api_key and not self.openai_api_key.strip():
+            raise ValueError(
+                "Set OPENAI_API_KEY in the root .env before starting the live backend."
+            )
 
 
 class DomainError(Exception):

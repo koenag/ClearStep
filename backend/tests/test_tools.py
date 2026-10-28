@@ -55,7 +55,7 @@ async def test_actual_mcp_tools_and_calculation(seeded):
         with pytest.raises(DomainError, match="schema"):
             await tools.call("get_facts", {"business_id": "someone_else"})
         wrong = await tools.call("run_event_model", {"inputs": []})
-        assert wrong["error"]["code"] == "tool_failed"
+        assert wrong["error"]["code"] == "wrong_model"
 
 
 @pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_real_uploads_never_enter_model_context(backend, seeded):
         assert local["id"] not in json.dumps(ctx)
         assert "PRIVATE_FINANCIAL_SENTINEL" not in json.dumps(ctx)
         denied = await tools.call("read_source_excerpt", {"source_id": local["id"], "part": 0})
-        assert denied["error"]["code"] == "tool_failed"
+        assert denied["error"]["code"] == "ai_policy_denied"
     from app.contracts import RunRequest
 
     fresh = app.state.executor.create_run(
@@ -84,7 +84,11 @@ async def test_real_uploads_never_enter_model_context(backend, seeded):
 async def test_candidate_requires_review_and_preserves_original_facts(seeded):
     services, b = seeded
     run, task, scope = make_scope(services, b, "data_parser")
-    source = next(s for s in services.store.list("source", b["id"]) if s["data"]["format"] == "txt")
+    source = next(
+        s
+        for s in services.store.list("source", b["id"])
+        if s["data"]["filename"] == "alternative_supplier_quote_email.txt"
+    )
     chunk = source["data"]["chunks"][0]
     candidate = services.submit_candidate(
         b["id"],
@@ -95,7 +99,7 @@ async def test_candidate_requires_review_and_preserves_original_facts(seeded):
             unit="USD/unit",
             source_id=source["id"],
             location=chunk["location"],
-            evidence="new_unit_cost = 10 USD/unit",
+            evidence="(equivalent to $10.00 per lb).",
         ),
     )
     assert candidate["data"]["status"] == "candidate"
@@ -128,7 +132,11 @@ async def test_candidate_requires_review_and_preserves_original_facts(seeded):
 
 def test_fake_evidence_and_bad_units_rejected(seeded):
     services, b = seeded
-    source = next(s for s in services.store.list("source", b["id"]) if s["data"]["format"] == "txt")
+    source = next(
+        s
+        for s in services.store.list("source", b["id"])
+        if s["data"]["filename"] == "alternative_supplier_quote_email.txt"
+    )
     base = dict(
         decision_type="supplier_switch",
         field="new_unit_cost",
@@ -182,14 +190,18 @@ def test_strict_schema_is_closed():
 def test_conflicting_candidates_can_be_accepted_or_rejected(seeded):
     services, b = seeded
     run, task, scope = make_scope(services, b, "data_parser")
-    source = next(s for s in services.store.list("source", b["id"]) if s["data"]["format"] == "txt")
+    source = next(
+        s
+        for s in services.store.list("source", b["id"])
+        if s["data"]["filename"] == "alternative_supplier_quote_email.txt"
+    )
     kwargs = dict(
         decision_type="supplier_switch",
         field="new_unit_cost",
         unit="USD/unit",
         source_id=source["id"],
         location=source["data"]["chunks"][0]["location"],
-        evidence="new_unit_cost = 10 USD/unit",
+        evidence="(equivalent to $10.00 per lb).",
     )
     first = services.submit_candidate(b["id"], FactCandidate(value="10", **kwargs))
     second = services.submit_candidate(b["id"], FactCandidate(value="9", **kwargs))
@@ -242,3 +254,117 @@ def test_optimistic_updates_do_not_overwrite_newer_state(seeded):
     with pytest.raises(DomainError, match="changed"):
         services.store.patch(record, {"value": 3})
     assert services.store.get(record["id"])["data"]["value"] == 2
+
+
+@pytest.mark.asyncio
+async def test_risk_invalid_evidence_is_expected_error_then_can_be_corrected(seeded, caplog):
+    import logging
+
+    services, business = seeded
+    run, task, scope = make_scope(services, business, "risk")
+    caplog.set_level(logging.ERROR)
+    async with ToolSession(services, scope) as tools:
+        bad = {
+            "findings": [
+                {
+                    "description": "Review the procurement assumptions.",
+                    "severity": "info",
+                    "evidence_ids": ["fact_missing_or_truncated"],
+                }
+            ]
+        }
+        raw = await tools.client.call_tool("submit_risk_findings", bad)
+        assert (
+            raw.is_error is True
+        )  # Real MCP error semantics, not a successful error-shaped response.
+        result = await tools.call("submit_risk_findings", bad)
+        assert result["error"]["code"] == "invalid_evidence_reference"
+        assert "get_facts" in result["error"]["message"]
+        assert "No findings were saved" in result["error"]["message"]
+        assert services.store.list("artifact", run_id=run["id"]) == []
+        assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+        facts = (await tools.call("get_facts", {}))["facts"]
+        good = {
+            "findings": [
+                {
+                    "description": "Review the procurement assumptions.",
+                    "severity": "info",
+                    "evidence_ids": [facts[0]["id"]],
+                }
+            ]
+        }
+        saved = await tools.call("submit_risk_findings", good)
+        assert saved["kind"] == "artifact" and saved["data"]["type"] == "risk"
+        assert len(services.store.list("artifact", run_id=run["id"])) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reference", ["other_business_fact", "other_run_artifact", "local_source"])
+async def test_risk_evidence_scope_is_not_relaxed(seeded, reference, caplog):
+    import logging
+
+    services, business = seeded
+    run, task, scope = make_scope(services, business, "risk")
+    if reference == "other_business_fact":
+        record = services.store.create(
+            "fact", {"ai_eligible": True, "private": "never disclose"}, "other_business"
+        )
+    elif reference == "other_run_artifact":
+        record = services.store.create(
+            "artifact", {"private": "never disclose"}, business["id"], "other_run"
+        )
+    else:
+        record = services.upload(business["id"], "private.txt", b"never disclose")
+    caplog.set_level(logging.ERROR)
+    async with ToolSession(services, scope) as tools:
+        result = await tools.call(
+            "submit_risk_findings",
+            {
+                "findings": [
+                    {
+                        "description": "An unsupported reference.",
+                        "severity": "info",
+                        "evidence_ids": [record["id"]],
+                    }
+                ]
+            },
+        )
+    assert result["error"]["code"] == (
+        "ai_policy_denied" if reference == "local_source" else "invalid_evidence_reference"
+    )
+    assert "never disclose" not in json.dumps(result)
+    assert services.store.list("artifact", run_id=run["id"]) == []
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+@pytest.mark.asyncio
+async def test_unexpected_tool_bug_stays_generic_and_is_logged(seeded, monkeypatch, caplog):
+    import logging
+
+    services, business = seeded
+    run, task, scope = make_scope(services, business, "risk")
+    original = services.store.get
+
+    def broken(id, *args, **kwargs):
+        if id == "fact_trigger_bug":
+            raise RuntimeError("private diagnostic detail")
+        return original(id, *args, **kwargs)
+
+    monkeypatch.setattr(services.store, "get", broken)
+    caplog.set_level(logging.ERROR)
+    async with ToolSession(services, scope) as tools:
+        result = await tools.call(
+            "submit_risk_findings",
+            {
+                "findings": [
+                    {
+                        "description": "Test a genuine internal failure.",
+                        "severity": "info",
+                        "evidence_ids": ["fact_trigger_bug"],
+                    }
+                ]
+            },
+        )
+    assert result["error"]["code"] == "tool_failed"
+    assert "private diagnostic detail" not in json.dumps(result)
+    assert any(r.exc_info for r in caplog.records if r.levelno >= logging.ERROR)

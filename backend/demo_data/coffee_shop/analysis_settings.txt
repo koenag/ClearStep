@@ -1,0 +1,11 @@
+DEMO ANALYSIS SETTINGS - NOT BUSINESS HISTORY
+Forecast horizon: 12 months.
+Current annual unit-price escalation: 0 (flat-price scenario assumption).
+Proposed annual unit-price escalation: 0 (flat-price scenario assumption).
+Supplier demand sensitivity: +/-20% around the forward forecast.
+Proposed supplier price sensitivity: +/-5% around the quoted price.
+Event attendance sensitivity: +/-25%.
+Event spend sensitivity: +/-10%.
+Event expense sensitivity: +/-10%.
+Event repeat-rate sensitivity: +/-25%.
+These are illustrative scenario controls, not estimated probability distributions.

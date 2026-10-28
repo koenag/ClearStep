@@ -1,90 +1,95 @@
-"""Only this server-controlled seed can mark source content AI-eligible."""
+"""Seed versioned synthetic records from an inspectable fixture bundle.
 
-import csv
-import io
-import random
-from datetime import date, timedelta
+The manifest explicitly maps this known dataset to model inputs. It is demo
+wiring, not a general document extractor or an owner-supplied business record.
+"""
 
-from app.contracts import EventInput, SupplierInput
-from app.service import input_unit
+import hashlib
+import json
+from pathlib import Path
+
+from app.data import parse_file
+from app.service import INPUT_MODELS, input_unit
+
+DEMO_FOLDER = Path(__file__).resolve().parents[1] / "demo_data" / "coffee_shop"
+
+
+def load_bundle():
+    manifest_bytes = (DEMO_FOLDER / "manifest.json").read_bytes()
+    manifest = json.loads(manifest_bytes)
+    sources = {}
+    digest = hashlib.sha256(manifest_bytes)
+    for filename in manifest["sources"]:
+        if Path(filename).name != filename:
+            raise ValueError("Demo source filenames must be simple local filenames.")
+        content = (DEMO_FOLDER / filename).read_bytes()
+        sources[filename] = content
+        digest.update(filename.encode())
+        digest.update(content)
+    return manifest, sources, digest.hexdigest()
 
 
 def seed_demo(services):
-    existing = [b for b in services.store.list("business") if b["data"].get("seeded_demo")]
+    manifest, files, fingerprint = load_bundle()
+    existing = [
+        b
+        for b in services.store.list("business")
+        if b["data"].get("seeded_demo") and b["data"].get("dataset_sha256") == fingerprint
+    ]
     if existing:
         return existing[0]
+    # Validate the complete fixture before writing anything, so editing an input
+    # without its fact mapping cannot leave a half-seeded business behind.
+    parsed = {name: parse_file(name, content, services.settings) for name, content in files.items()}
+    for kind, model in INPUT_MODELS.items():
+        inputs = {f["field"]: f["value"] for f in manifest["facts"] if f["decision_type"] == kind}
+        if set(inputs) != set(model.model_fields):
+            raise ValueError("Demo input index must explicitly cover all model fields.")
+        model.model_validate(inputs)
+    for fact in manifest["facts"]:
+        chunks = parsed[fact["source"]]["chunks"]
+        if not any(fact["evidence"] in c["text"] for c in chunks):
+            raise ValueError("Demo evidence quotation is absent: " + fact["field"])
+        services.validate_field(fact["decision_type"], fact["field"], fact["value"])
+    # New datasets get a separate business. Historical inputs/runs stay intact.
     business = services.store.create(
         "business",
         {
-            "name": "Juniper Coffee (fictional)",
+            "name": "Juniper Coffee (fictional business records)",
             "industry": "Coffee shop",
             "seeded_demo": True,
             "currency": "USD",
+            "dataset_version": manifest["dataset_version"],
+            "dataset_sha256": fingerprint,
         },
-        key="demo_business_v2",
+        key="demo_records:" + fingerprint,
     )
-    out = io.StringIO()
-    writer = csv.writer(out)
-    writer.writerow(["date", "product", "quantity", "unit_price", "unit_cost"])
-    rng = random.Random(42)
-    for n in range(92):
-        day = date(2026, 7, 1) + timedelta(days=n)
-        for name, price, cost, mean in [
-            ("Latte", "5.50", "1.80", 42),
-            ("Cappuccino", "5.00", "1.65", 29),
-            ("Americano", "3.75", ".95", 33),
-            ("Cold brew", "5.25", "1.45", 23),
-            ("Croissant", "4.25", "1.85", 27),
-        ]:
-            q = max(1, round(mean * (1.25 if day.weekday() > 4 else 1) * rng.uniform(0.75, 1.25)))
-            writer.writerow([day.isoformat(), name, q, price, cost])
-    services.upload(business["id"], "fictional_sales.csv", out.getvalue().encode(), seeded=True)
-    examples = {
-        "supplier_switch": SupplierInput(
-            current_unit_cost=12,
-            new_unit_cost=10,
-            monthly_quantity=100,
-            current_shipping=40,
-            new_shipping=50,
-            switching_cost=400,
-        ),
-        "promotional_event": EventInput(
-            event_cost=500,
-            incremental_visits=120,
-            average_spend=9,
-            contribution_margin=".65",
-            repeat_rate=".2",
-            repeat_visits=2,
-            staffing_cost=150,
-        ),
+    sources = {
+        name: services.upload(business["id"], name, content, seeded=True, _parsed=parsed[name])
+        for name, content in files.items()
     }
-    text = "SERVER-GENERATED FICTIONAL ASSUMPTIONS. Not historical facts.\n"
-    for kind, model in examples.items():
-        text += (
-            kind
-            + "\n"
-            + "\n".join(f"{k} = {v} {input_unit(k)}" for k, v in model.model_dump().items())
-            + "\n"
+    for fact in manifest["facts"]:
+        source = sources[fact["source"]]
+        matches = [c for c in source["data"]["chunks"] if fact["evidence"] in c["text"]]
+        if not matches:
+            raise ValueError("Demo evidence quotation is absent: " + fact["field"])
+        services.validate_field(fact["decision_type"], fact["field"], fact["value"])
+        services.store.create(
+            "fact",
+            {
+                "decision_type": fact["decision_type"],
+                "field": fact["field"],
+                "value": fact["value"],
+                "unit": input_unit(fact["field"]),
+                "source_id": source["id"],
+                "location": matches[0]["location"],
+                "evidence": fact["evidence"],
+                "provenance": fact["provenance"],
+                "status": "accepted",
+                "ai_eligible": True,
+                "note": fact["note"],
+                "normalization": "Prepared demo index with source quotations; not general-purpose extraction.",
+            },
+            business["id"],
         )
-    source = services.upload(
-        business["id"], "fictional_assumptions.txt", text.encode(), seeded=True
-    )
-    for kind, model in examples.items():
-        for field, value in model.model_dump().items():
-            services.store.create(
-                "fact",
-                {
-                    "decision_type": kind,
-                    "field": field,
-                    "value": str(value),
-                    "unit": input_unit(field),
-                    "source_id": source["id"],
-                    "location": "server seed",
-                    "provenance": "assumed",
-                    "status": "accepted",
-                    "ai_eligible": True,
-                    "note": "Explicit fictional demo assumption; not inferred from sales.",
-                },
-                business["id"],
-            )
     return business

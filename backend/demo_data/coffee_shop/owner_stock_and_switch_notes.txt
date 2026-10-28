@@ -1,0 +1,28 @@
+Juniper - owner's notebook, 2026-10-20 (FICTIONAL)
+
+Bean counts, pounds of roasted coffee:
+2026-06-30 closing stock: 20 lb
+2026-07-31 closing stock: 20 lb
+2026-08-31 closing stock: 25 lb
+2026-09-30 closing stock: 20 lb
+Invoices show 100 lb received in July, 110 lb in August, and 90 lb in September.
+So use including waste was 100, 105, and 95 lb. About 6 lb over the three
+months was spilled or used for dialling in; waste was not tracked daily.
+Do not treat drinks sold as pounds of coffee purchased.
+
+Planning assumptions, not historical measurements:
+- Use 100 lb/month as the forward forecast, including normal waste.
+- Place one consolidated bean order in each purchase month with either vendor.
+- Begin the comparison after the remaining stock is used: assume zero opening
+  stock for both alternatives. Do not expense today's remaining stock twice.
+- Budget $400 one-off for staff tasting/training time and menu/label updates.
+  This is my estimate, not a supplier fee or paid invoice.
+- We have tasted the samples and will assume equivalent menu quality for the
+  cost scenario. Equal reliability is an assumption, not verified performance.
+- No cancellation fee applies to our current arrangement. Storage can hold
+  200 lb; assume no additional storage cost at the planned quantities.
+- Compare 12 months. Hold both prices flat for this first scenario, despite the
+  new quote's expiry; show the price-change risk rather than call it guaranteed.
+
+The POS export does not include milk, pastry, labour, rent, or recipe costs.
+Neither net profit nor a measured shop-wide contribution margin is available.

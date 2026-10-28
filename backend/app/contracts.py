@@ -117,12 +117,6 @@ class BusinessCreate(Strict):
     industry: str = Field(default="Coffee shop", max_length=120)
 
 
-class AnalyzeRequest(Strict):
-    decision_type: Kind
-    inputs: dict[str, Decimal | int]
-    provenance: dict[str, Literal["user", "assumed", "observed"]] = Field(default_factory=dict)
-
-
 class RunRequest(Strict):
     business_id: str
     question: str = Field(min_length=3, max_length=2000)

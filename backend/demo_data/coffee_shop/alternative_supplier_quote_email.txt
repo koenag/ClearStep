@@ -1,0 +1,21 @@
+From: sales@cedarcrest.example
+To: owner@juniper.example
+Date: 2026-10-15
+Subject: House espresso wholesale quote for Juniper
+
+Hi Maya,
+
+Thanks for trying the samples. Our House Espresso is $50.00 for a 5 lb bag
+(equivalent to $10.00 per lb). Your planned 20-bag order would be $1,000.00
+for coffee. The minimum is 10 bags (50 lb).
+
+Delivery is $50.00 per shipment at this order size, not per bag. With one
+20-bag delivery the total is $1,050.00 before any applicable taxes.
+We can schedule one consolidated delivery at the beginning of each month.
+Payment is due within 14 days; there is no sign-up or account-opening fee.
+This quote is valid through 2026-11-30. Prices beyond that date are not guaranteed.
+
+Regards,
+Cedar Crest wholesale team
+
+[All names, domains, prices, and terms in this email are fictional.]

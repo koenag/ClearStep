@@ -84,7 +84,6 @@ def test_encrypted_and_scanned_pdf(settings):
     "filename,content",
     [
         ("bad.exe", b"abc"),
-        ("bad.csv", b"wrong,headers\na,b"),
         ("bad.txt", b"\xff"),
         ("bad.pdf", b"not a pdf"),
     ],
@@ -117,3 +116,34 @@ def test_duplicate_headers_and_ambiguous_dates_are_not_guessed(settings):
             b"date,product,quantity,unit_price,unit_cost\n01/02/2026,Latte,2,5,2",
             settings,
         )
+
+
+def test_pos_export_has_revenue_but_no_invented_costs(settings):
+    content = (
+        b"Date,Time,Receipt,Item,Qty,Gross Sales,Discount,Net Sales,Tax,Payment Method\n"
+        b"2026-08-01,09:00,A,Latte,2,11.00,1.00,10.00,.75,Card\n"
+        b"2026-08-01,09:00,A,Croissant,1,4.25,0,4.25,.32,Card\n"
+        b"2026-08-01,09:05,B,Americano,1,3.75,.50,3.25,.24,Cash\n"
+    )
+    baseline = parse_file("pos.csv", content, settings)["baseline"]
+    assert baseline["revenue"] == 17.50 and baseline["gross_sales"] == 19
+    assert baseline["discounts"] == 1.50 and baseline["tax_collected"] == 1.31
+    assert baseline["transactions"] == 2 and baseline["line_items"] == 3
+    assert baseline["units"] == 4 and baseline["average_transaction_value"] == 8.75
+    assert (
+        baseline["variable_costs"]
+        is baseline["contribution_profit"]
+        is baseline["contribution_margin"]
+        is None
+    )
+    assert all(p["cost"] is None for p in baseline["products"])
+
+
+def test_generic_table_is_evidence_not_a_fake_sales_baseline(settings):
+    result = parse_file(
+        "purchase_register.csv",
+        b"Supplier,Invoice total,Invoice date\nRoaster,1240,2026-07-01\n",
+        settings,
+    )
+    assert result["baseline"] is None and result["rows"] == 1
+    assert "no financial baseline" in result["warnings"][0]
