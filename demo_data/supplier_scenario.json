@@ -1,0 +1,1 @@
+{"decision_type":"supplier_switch","inputs":{"current_unit_cost":12,"new_unit_cost":10,"monthly_quantity":100,"current_shipping":40,"new_shipping":50,"switching_cost":400,"horizon":12},"provenance":{"current_unit_cost":"assumed","new_unit_cost":"assumed","monthly_quantity":"assumed","current_shipping":"assumed","new_shipping":"assumed","switching_cost":"assumed"}}
