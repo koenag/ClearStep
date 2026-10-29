@@ -107,7 +107,13 @@ class Services:
     def validate_field(self, kind, field, value):
         cls = INPUT_MODELS[kind]
         if field not in cls.model_fields:
-            raise DomainError("unknown_input", "Unknown input field: " + field)
+            raise DomainError(
+                "unknown_input",
+                "Unknown input field: "
+                + field
+                + ". Use exactly one field per question. Allowed fields: "
+                + ", ".join(cls.model_fields),
+            )
         # Validate one field using the same rules as the full financial model.
         from pydantic import TypeAdapter
 
@@ -311,6 +317,15 @@ class Services:
                             "invalid_answer",
                             "Supply a value and canonical unit " + input_unit(field),
                         )
+                    if q["data"]["candidate_id"]:
+                        candidate = self.store.get(
+                            q["data"]["candidate_id"], "fact", run["business_id"], session=db
+                        )
+                        if candidate["data"]["status"] != "candidate":
+                            raise DomainError(
+                                "stale_candidate", "This candidate was already reviewed.", 409
+                            )
+                        self.store.patch(candidate, {"status": "rejected"}, db)
                     value = a.value
                     unit = a.unit
                     provenance = "user"
@@ -341,6 +356,18 @@ class Services:
                     session=db,
                 )
                 self.store.patch(q, {"status": "answered"}, db)
+            # One confirmed value also resolves duplicate questions about that same
+            # field. Distinct, unreviewed candidates remain open for explicit review.
+            for q in self.store.list("question", run_id=run["id"], session=db):
+                if q["data"]["status"] != "open":
+                    continue
+                candidate_id = q["data"]["candidate_id"]
+                resolved = not candidate_id and q["data"]["field"] in selected_fields
+                if candidate_id:
+                    candidate = self.store.get(candidate_id, "fact", run["business_id"], session=db)
+                    resolved = candidate["data"]["status"] in ["confirmed", "rejected"]
+                if resolved:
+                    self.store.patch(q, {"status": "answered"}, db)
             remaining = [
                 q
                 for q in self.store.list("question", run_id=run["id"], session=db)

@@ -1,8 +1,23 @@
-# Business Decision Agents — live demos
+# Business Decision Agents — local app and live demos
 
 One demo execution path: OpenAI agents → scoped MCP tools → deterministic financial models.
 There is no offline run mode, mock-model CLI option, or direct-calculation HTTP endpoint.
 Financial arithmetic still executes in Python through the Scenario agent's tools.
+
+## Open the owner interface
+
+From the repository root:
+
+```bash
+cd backend
+../.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+Open **http://127.0.0.1:8000**. Choose a folder or individual files, ask a question,
+review the extracted numbers, and read/save the calculated answer. No separate frontend
+server, npm installation, or build is needed. See [frontend/README.md](../frontend/README.md).
+Normal startup uses the root `.env`; OpenAI calls begin only when an analysis starts.
+The API at `/docs` remains available. Run a single execution host per database.
 
 ## Launch a live demo
 
@@ -132,7 +147,8 @@ or retried. Create a new run with clarified assumptions when appropriate.
 - `demo.py`: controlled fictional business inputs, never canned agent responses.
 - `prompts/`: common instructions and role-specific instructions. Research remains disabled.
 
-Existing historical runs, financial formulas, risk checks, and the frontend are preserved.
+Existing historical runs, financial formulas, and risk checks are preserved. The frontend
+has been replaced by the minimal owner interface linked above.
 
 ## Data policy and limits
 
@@ -251,3 +267,19 @@ and tool-call limits still apply. No paid evaluation was performed for this chan
 extraction quality and large-batch behavior still require a live trial. Supported financial
 questions remain supplier switching and one promotional event; organizing more kinds of
 records does not add financial models.
+
+### Recoverable extraction errors
+
+Workspace batch writes return both `entries` (successful IDs) and `errors` (failed
+entry indexes, codes, and repair guidance). Successful entries remain saved; correct
+only the failed entries. Source quotations and locations must still match exactly.
+Clarification/input MCP schemas enumerate canonical contract field names; use separate
+questions for separate inputs, such as `current_shipping` and `new_shipping`.
+
+When accumulated history reaches the existing context limit, the runner replaces older
+complete tool exchanges with an explicitly abbreviated data summary, retaining the latest
+response/tool-output exchange intact. Saved workspace records remain available through
+tools. Compaction emits a `context_compacted` event; it does not increase the budget or
+guarantee that oversized individual exchanges fit. Abbreviated quotes must be reread
+before use as evidence. A previously `limit_reached` run stays unchanged; launch a new
+run after updating the code.

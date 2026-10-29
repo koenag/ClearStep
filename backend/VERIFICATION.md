@@ -1,3 +1,27 @@
+# Minimal owner interface — October 28, 2026
+
+- Backend suite: **91 passed** (27.05 seconds); frontend logic: **6 passed**.
+- Static routes serve the interface and all assets alongside the existing API.
+- Review regression verifies that correcting an extracted value rejects the old
+  proposal and resolves duplicate questions rather than causing another review loop.
+- Frontend logic covers conflicting candidates, explicit selection, percent conversion,
+  validation, supported folder files, and human-readable financial values.
+- JavaScript syntax checks and backend Ruff checks passed.
+- Browser automation host was unavailable, so visual layout and browser end-to-end
+  interaction remain unverified. No paid OpenAI request was made.
+
+# Extraction error recovery — October 28, 2026
+
+- Backend suite: **89 passed** (25.65 seconds); Ruff and compileall passed.
+- Regression tests exercise mixed valid/invalid quotation batches, idempotent successful
+  writes, canonical-field schema rejection and corrected shipping questions, and a
+  13-request agent sequence that compacts context while preserving tool-call pairs.
+- Batch errors now identify failed indexes and repair guidance while returning saved IDs.
+- Canonical field enums prevent combined clarification fields in MCP requests.
+- Context compaction is bounded and emits an event; existing limits remain enforced.
+- Inspected the saved failed run without modifying it. No paid model request was made;
+  live extraction accuracy and success after these changes remain unverified.
+
 # Evidence workspace update — October 28, 2026
 
 - Backend suite: **86 passed** (25.76 seconds); Ruff and compileall passed.

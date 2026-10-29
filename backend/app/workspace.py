@@ -15,7 +15,12 @@ def save_entry(services, scope, entry):
             for c in source["data"]["chunks"]
         ):
             raise DomainError(
-                "invalid_evidence", "Workspace evidence must quote its exact source location."
+                "invalid_evidence",
+                f"Entry {entry.subject!r} / {entry.attribute!r}: quotation does not match "
+                f"source {evidence.source_id} at {evidence.location!r}. "
+                "Copy location and quote verbatim from read_source_excerpt; do not paraphrase. "
+                "Available locations: "
+                + ", ".join(c["location"] for c in source["data"]["chunks"][:10]),
             )
     data = {"type": "workspace_entry", **entry.model_dump()}
     if len(json.dumps(data)) > 14000:

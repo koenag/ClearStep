@@ -1,11 +1,13 @@
-"""Backend-only local API. /docs is the interactive client while UI work is deferred."""
+"""Local API and buildless owner-facing interface."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from app.agents import AgentRunner
@@ -220,5 +222,13 @@ def create_app(settings=None, model=None):
             for o in store.list("outcome", record["business_id"])
             if o["data"]["decision_id"] == id
         ]
+
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    if (frontend / "index.html").is_file():
+        app.mount("/assets", StaticFiles(directory=frontend / "assets"), name="assets")
+
+        @app.get("/", include_in_schema=False)
+        def owner_interface():
+            return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-store"})
 
     return app

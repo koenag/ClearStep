@@ -22,3 +22,11 @@ Include at least one saved workspace record ID in artifact_ids when completing e
 
 Batch tool calls where independent. Use one propose_workspace_input call per field,
 but multiple independent calls may be returned in the same model turn.
+
+Copy each evidence location and quotation verbatim from read_source_excerpt, including
+punctuation. A batch save returns saved IDs plus errors indexed by entry; retain the
+saved records and correct ONLY failed entries. Do not resubmit an entire batch.
+For clarification use one exact input_contract property name per question. For example,
+current_shipping and new_shipping require TWO questions, never a combined field name.
+If earlier history was compacted, query saved records and reread precise excerpts rather
+than reconstructing quotations from an abbreviated summary.

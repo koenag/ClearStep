@@ -190,8 +190,14 @@ def create_server(services, scope: ToolScope):
         """Save 1-20 organized records in one call. Returns compact IDs; exact repeats are idempotent."""
         if not 1 <= len(entries) <= 20:
             raise DomainError("invalid_batch", "Save 1-20 workspace records per call.")
-        records = [save_entry(services, scope, entry) for entry in entries]
+        records, errors = [], []
+        for index, entry in enumerate(entries):
+            try:
+                records.append(save_entry(services, scope, entry))
+            except DomainError as exc:
+                errors.append({"index": index, "code": exc.code, "message": exc.message[:700]})
         return {
+            "errors": errors,
             "entries": [
                 {
                     "id": r["id"],
@@ -199,7 +205,7 @@ def create_server(services, scope: ToolScope):
                     "attribute": r["data"]["attribute"],
                 }
                 for r in records
-            ]
+            ],
         }
 
     @register
@@ -238,12 +244,24 @@ def create_server(services, scope: ToolScope):
     @register
     def request_input(questions: list[Question]) -> dict[str, Any]:
         """Record missing-input or candidate-review questions; return needs_input as final status."""
-        return {
-            "questions": [
-                services.new_question(services.store.get(scope.run_id, "run"), q, scope.task_id)
-                for q in questions
-            ]
-        }
+        saved, errors = [], []
+        for index, question in enumerate(questions):
+            try:
+                saved.append(
+                    services.new_question(
+                        services.store.get(scope.run_id, "run"), question, scope.task_id
+                    )
+                )
+            except DomainError as exc:
+                errors.append(
+                    {
+                        "index": index,
+                        "field": question.field,
+                        "code": exc.code,
+                        "message": exc.message,
+                    }
+                )
+        return {"questions": saved, "errors": errors}
 
     def calculate(kind, refs):
         require_kind(kind)
@@ -325,6 +343,7 @@ class ToolSession:
     """Allowlisted MCP bridge. The model never receives a client or a raw callable."""
 
     def __init__(self, services, scope):
+        self.services = services
         self.scope = scope
         self.client = Client(create_server(services, scope))
         self.definitions = []
@@ -335,6 +354,23 @@ class ToolSession:
         tools = (await self.client.list_tools()).tools
         for t in tools:
             schema = strict_schema(t.input_schema)
+            if t.name in {"request_input", "propose_workspace_input", "submit_fact_candidate"}:
+                record = self.services.store.get(self.scope.run_id, "run", self.scope.business_id)
+                kind = (record["data"].get("plan") or {}).get("decision_type")
+                if kind in INPUT_MODELS:
+
+                    def constrain(node):
+                        if isinstance(node, dict):
+                            field = node.get("properties", {}).get("field")
+                            if field is not None:
+                                field["enum"] = list(INPUT_MODELS[kind].model_fields)
+                            for value in node.values():
+                                constrain(value)
+                        elif isinstance(node, list):
+                            for value in node:
+                                constrain(value)
+
+                    constrain(schema)
             self.schemas[t.name] = schema
             self.definitions.append(
                 {
@@ -367,9 +403,16 @@ class ToolSession:
         try:
             validate(arguments, self.schemas[name])
         except Exception as exc:
-            raise DomainError(
-                "invalid_tool_arguments", "Tool arguments do not match its schema."
-            ) from exc
+            message = "Tool arguments do not match its schema."
+            if name in {"request_input", "propose_workspace_input", "submit_fact_candidate"}:
+                record = self.services.store.get(self.scope.run_id, "run", self.scope.business_id)
+                kind = (record["data"].get("plan") or {}).get("decision_type")
+                if kind in INPUT_MODELS:
+                    message += (
+                        " Use exactly one canonical field per question/input, never combined names. Allowed fields: "
+                        + ", ".join(INPUT_MODELS[kind].model_fields)
+                    )
+            raise DomainError("invalid_tool_arguments", message) from exc
         result = await self.client.call_tool(name, arguments)
         if result.is_error:
             # Only decode the application-owned error envelope; arbitrary SDK errors

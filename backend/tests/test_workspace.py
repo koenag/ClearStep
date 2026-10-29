@@ -10,6 +10,104 @@ from test_live_demo import script_module
 from test_tools import make_scope
 
 
+@pytest.mark.asyncio
+async def test_batch_reports_bad_quote_without_losing_valid_entries(seeded):
+    services, business = seeded
+    source = services.store.list("source", business["id"])[1]
+    run, _, scope = make_scope(services, business, "data_parser")
+    valid = entry_for(source)
+    invalid = entry_for(
+        source,
+        attribute="shipping",
+        evidence=[
+            {
+                "source_id": source["id"],
+                "location": "invented location",
+                "quote": "paraphrased terms",
+            }
+        ],
+    )
+    async with ToolSession(services, scope) as tools:
+        result = await tools.call("save_workspace_entries", {"entries": [invalid, valid]})
+        assert len(result["entries"]) == 1
+        assert result["errors"][0]["index"] == 0
+        assert result["errors"][0]["code"] == "invalid_evidence"
+        assert "Available locations:" in result["errors"][0]["message"]
+        repeated = await tools.call("save_workspace_entries", {"entries": [valid]})
+        assert repeated["entries"][0]["id"] == result["entries"][0]["id"]
+    assert len(services.store.list("artifact", run_id=run["id"])) == 1
+
+
+@pytest.mark.asyncio
+async def test_combined_question_field_rejected_with_repair_guidance(seeded):
+    services, business = seeded
+    run, _, scope = make_scope(services, business, "data_parser")
+    async with ToolSession(services, scope) as tools:
+        schema = tools.schemas["request_input"]
+        assert "current_shipping" in schema["$defs"]["Question"]["properties"]["field"]["enum"]
+        with pytest.raises(DomainError, match="one canonical field"):
+            await tools.call(
+                "request_input",
+                {
+                    "questions": [
+                        {
+                            "field": "current_shipping and new_shipping",
+                            "reason": "Clarify shipping",
+                            "candidate_id": None,
+                        }
+                    ]
+                },
+            )
+        result = await tools.call(
+            "request_input",
+            {
+                "questions": [
+                    {"field": field, "reason": "Clarify shipping", "candidate_id": None}
+                    for field in ["current_shipping", "new_shipping"]
+                ]
+            },
+        )
+        assert len(result["questions"]) == 2 and result["errors"] == []
+    assert len(services.store.list("question", run_id=run["id"])) == 2
+
+
+@pytest.mark.asyncio
+async def test_long_agent_history_compacts_and_continues(seeded):
+    from dataclasses import replace
+
+    from app.agents import AgentRunner
+
+    services, business = seeded
+    services.settings = replace(services.settings, max_context_chars=26000)
+    run, task, _ = make_scope(services, business, "data_parser")
+    source = next(
+        s for s in services.store.list("source", business["id"]) if s["data"]["format"] == "csv"
+    )
+
+    class ReadingModel(DemoModel):
+        async def respond(self, **kwargs):
+            self.requests.append(kwargs)
+            if len(self.requests) <= 12:
+                return self.call("read_source_excerpt", {"source_id": source["id"], "part": 0})
+            return final()
+
+    model = ReadingModel()
+    result = await AgentRunner(services, model).run(run, task)
+    assert result.status == "completed"
+    assert len(model.requests) == 13
+    assert any(
+        e["data"]["type"] == "context_compacted"
+        for e in services.store.list("event", run_id=run["id"])
+    )
+    for request in model.requests:
+        history = request["history"]
+        calls = {item["call_id"] for item in history if item.get("type") == "function_call"}
+        outputs = {
+            item["call_id"] for item in history if item.get("type") == "function_call_output"
+        }
+        assert calls == outputs
+
+
 def entry_for(source, **changes):
     chunk = source["data"]["chunks"][0]
     return {
