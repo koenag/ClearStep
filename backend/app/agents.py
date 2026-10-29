@@ -16,7 +16,7 @@ class AgentRunner:
         self.services, self.model = services, model
 
     def context(self, run, task, phase):
-        self.services.require_demo(run["business_id"])
+        self.services.business(run["business_id"])
         upstream = []
         for id in task["data"].get("dependency_ids", []):
             upstream.append(self.services.store.get(id, "task", run["business_id"], run["id"]))
@@ -30,7 +30,7 @@ class AgentRunner:
             "plan": run["data"].get("plan"),
             "upstream_results": upstream,
             "research_enabled": False,
-            "data_policy": "seeded_demo_only",
+            "data_policy": "uploaded_sources",
         }
 
     def budget(self, run_id, next_input_chars):

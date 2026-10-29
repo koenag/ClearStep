@@ -4,3 +4,6 @@ supplier or event tool matching the validated plan. Pass {field,fact_id} referen
 never arbitrary numerical inputs. If facts conflict or the model reports missing fields,
 request_input and return needs_input. Include the returned calculation ID in artifact_ids.
 Do not perform your own financial arithmetic or invent a monthly event-repeat trajectory.
+
+Use query_workspace to understand organized inputs; workspace values themselves are not
+accepted fact IDs and cannot be passed directly to financial tools.

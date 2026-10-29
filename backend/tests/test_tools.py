@@ -59,17 +59,17 @@ async def test_actual_mcp_tools_and_calculation(seeded):
 
 
 @pytest.mark.asyncio
-async def test_real_uploads_never_enter_model_context(backend, seeded):
+async def test_real_uploads_are_available_in_model_context(backend, seeded):
     app, client, model = backend
     services, b = seeded
     local = services.upload(b["id"], "private.txt", b"PRIVATE_FINANCIAL_SENTINEL")
     run, task, scope = make_scope(services, b, "data_parser")
     async with ToolSession(services, scope) as tools:
         ctx = await tools.call("get_context", {})
-        assert local["id"] not in json.dumps(ctx)
+        assert local["id"] in json.dumps(ctx)
         assert "PRIVATE_FINANCIAL_SENTINEL" not in json.dumps(ctx)
         denied = await tools.call("read_source_excerpt", {"source_id": local["id"], "part": 0})
-        assert denied["error"]["code"] == "ai_policy_denied"
+        assert denied["text"] == "PRIVATE_FINANCIAL_SENTINEL"
     from app.contracts import RunRequest
 
     fresh = app.state.executor.create_run(
@@ -77,7 +77,7 @@ async def test_real_uploads_never_enter_model_context(backend, seeded):
     )
     await app.state.executor.execute(fresh["id"])
     assert services.store.get(fresh["id"])["data"]["status"] == "completed"
-    assert "PRIVATE_FINANCIAL_SENTINEL" not in json.dumps(model.requests)
+    assert "PRIVATE_FINANCIAL_SENTINEL" in json.dumps(model.requests)
 
 
 @pytest.mark.asyncio
@@ -315,6 +315,7 @@ async def test_risk_evidence_scope_is_not_relaxed(seeded, reference, caplog):
         )
     else:
         record = services.upload(business["id"], "private.txt", b"never disclose")
+        record = services.store.patch(record, {"ai_eligible": False})
     caplog.set_level(logging.ERROR)
     async with ToolSession(services, scope) as tools:
         result = await tools.call(

@@ -1,6 +1,7 @@
 """Application services shared by REST and MCP. All mutations are explicit."""
 
 import hashlib
+import json
 from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
@@ -40,29 +41,19 @@ class Services:
     def business(self, id):
         return self.store.get(id, "business")
 
-    def require_demo(self, business_id):
-        b = self.business(business_id)
-        if not b["data"].get("seeded_demo"):
-            raise DomainError(
-                "ai_policy_denied",
-                "Agent runs are restricted to server-seeded synthetic demo businesses.",
-                403,
-            )
-        return b
-
     def source(self, id, business_id, for_ai=False):
         s = self.store.get(id, "source", business_id)
         if for_ai:
-            self.require_demo(business_id)
+            self.business(business_id)
             if not s["data"]["ai_eligible"]:
                 raise DomainError(
                     "ai_policy_denied",
-                    "Uploaded sources are local-only and cannot enter agent context.",
+                    "This source is not approved for agent context.",
                     403,
                 )
         return s
 
-    def upload(self, business_id, filename, content, sheet=None, *, seeded=False, _parsed=None):
+    def upload(self, business_id, filename, content, sheet=None, *, _parsed=None):
         self.business(business_id)
         parsed = (
             _parsed if _parsed is not None else parse_file(filename, content, self.settings, sheet)
@@ -80,7 +71,7 @@ class Services:
                     "filename": Path(filename).name,
                     "storage_name": name,
                     "sha256": hashlib.sha256(content).hexdigest(),
-                    "ai_eligible": seeded,
+                    "ai_eligible": True,
                     "status": "parsed",
                     **parsed,
                 },
@@ -123,7 +114,7 @@ class Services:
         annotation = cls.model_fields[field].rebuild_annotation()
         return TypeAdapter(annotation).validate_python(value)
 
-    def submit_candidate(self, business_id, candidate: FactCandidate):
+    def submit_candidate(self, business_id, candidate: FactCandidate, workspace_entry=None):
         source = self.source(candidate.source_id, business_id, for_ai=True)
         self.validate_field(candidate.decision_type, candidate.field, candidate.value)
         if candidate.unit != input_unit(candidate.field):
@@ -142,7 +133,17 @@ class Services:
                 "Evidence must be an exact excerpt at the specified source location.",
             )
         # The candidate value is not authoritative even when its quotation exists.
-        key = hashlib.sha256(candidate.model_dump_json().encode()).hexdigest()
+        workspace_data = {}
+        if workspace_entry:
+            workspace_data = {
+                "workspace_entry_id": workspace_entry["id"],
+                "provenance": "assumed"
+                if workspace_entry["data"]["status"] == "assumed"
+                else "observed",
+            }
+        key = hashlib.sha256(
+            (candidate.model_dump_json() + json.dumps(workspace_data, sort_keys=True)).encode()
+        ).hexdigest()
         return self.store.create(
             "fact",
             {
@@ -150,19 +151,24 @@ class Services:
                 "status": "candidate",
                 "provenance": "observed",
                 "ai_eligible": True,
+                **workspace_data,
             },
             business_id,
+            run_id=workspace_entry["run_id"] if workspace_entry else None,
             key="candidate:" + business_id + ":" + key,
         )
 
-    def eligible_facts(self, business_id, kind):
-        self.require_demo(business_id)
+    def eligible_facts(self, business_id, kind, run_id=None):
+        self.business(business_id)
         return [
             f
             for f in self.store.list("fact", business_id)
             if f["data"]["decision_type"] == kind
             and f["data"]["ai_eligible"]
             and f["data"]["status"] in ["accepted", "candidate"]
+            and (
+                run_id is None or f["data"]["status"] == "accepted" or f["run_id"] in [None, run_id]
+            )
         ]
 
     def calculate(
@@ -223,6 +229,7 @@ class Services:
                 or f["data"]["field"] != question.field
                 or f["data"]["decision_type"] != kind
                 or not f["data"]["ai_eligible"]
+                or f["run_id"] not in [None, run["id"]]
             ):
                 raise DomainError("invalid_candidate", "Question candidate is invalid.")
         for existing in self.store.list("question", run_id=run["id"]):
@@ -293,9 +300,10 @@ class Services:
                     self.store.patch(candidate, {"status": "confirmed"}, db)
                     value = candidate["data"]["value"]
                     unit = candidate["data"]["unit"]
-                    provenance = "observed"
+                    provenance = candidate["data"]["provenance"]
                     source_data = {
-                        k: candidate["data"].get(k) for k in ["source_id", "location", "evidence"]
+                        k: candidate["data"].get(k)
+                        for k in ["source_id", "location", "evidence", "workspace_entry_id"]
                     }
                 else:
                     if a.value is None or a.unit != input_unit(field):

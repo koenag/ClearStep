@@ -11,12 +11,14 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from app.config import DomainError
-from app.contracts import FactCandidate, InputRef, Question, RiskFinding
+from app.contracts import FactCandidate, InputRef, Question, RiskFinding, WorkspaceEntry
+from app.service import INPUT_MODELS
+from app.workspace import query_entries, save_entry
 
 DOMAIN_ERROR_MARKER = "BUSINESS_TOOL_ERROR: "
 
 ROLE_TOOLS = {
-    "orchestrator": {"get_context", "get_artifact"},
+    "orchestrator": {"get_context", "get_artifact", "query_workspace"},
     "data_parser": {
         "get_context",
         "list_sources",
@@ -24,8 +26,13 @@ ROLE_TOOLS = {
         "get_facts",
         "submit_fact_candidate",
         "request_input",
+        "save_workspace_entry",
+        "save_workspace_entries",
+        "query_workspace",
+        "propose_workspace_input",
     },
     "risk": {
+        "query_workspace",
         "get_context",
         "get_facts",
         "get_artifact",
@@ -34,6 +41,7 @@ ROLE_TOOLS = {
         "request_input",
     },
     "scenario": {
+        "query_workspace",
         "get_context",
         "get_facts",
         "get_artifact",
@@ -80,7 +88,7 @@ def strict_schema(schema):
 
 
 def create_server(services, scope: ToolScope):
-    services.require_demo(scope.business_id)
+    services.business(scope.business_id)
     run = services.store.get(scope.run_id, "run", scope.business_id)
     server = MCPServer("Business tools: " + scope.role)
     allowed = ROLE_TOOLS[scope.role]
@@ -115,7 +123,7 @@ def create_server(services, scope: ToolScope):
 
     @register
     def get_context() -> dict[str, Any]:
-        """Get the scoped objective, eligible source metadata and capabilities. No real uploads."""
+        """Get the objective, available source metadata and required financial input contract."""
         sources = [
             services.source_view(s)
             for s in services.store.list("source", scope.business_id)
@@ -123,17 +131,22 @@ def create_server(services, scope: ToolScope):
         ]
         # Never return raw business name or descriptions from editable profile fields.
         return {
-            "business": "Server-seeded fictional coffee shop",
+            "business": "Business records in this scope",
             "question": run["data"]["question"],
             "plan": run["data"].get("plan"),
             "sources": sources,
             "research_enabled": False,
+            "input_contract": (
+                INPUT_MODELS[run["data"]["plan"]["decision_type"]].model_json_schema()
+                if (run["data"].get("plan") or {}).get("decision_type") in INPUT_MODELS
+                else None
+            ),
             "canonical_units": "USD/unit, units/month, units, USD, months, ratio, USD/visit, visits, visits/customer",
         }
 
     @register
     def list_sources() -> dict[str, Any]:
-        """List only server-seeded sources approved for AI use."""
+        """List sources approved for AI use, including parsed table summaries where available."""
         return {
             "sources": [
                 services.source_view(s)
@@ -160,12 +173,61 @@ def create_server(services, scope: ToolScope):
     def get_facts() -> dict[str, Any]:
         """Get accepted and candidate facts for the planned decision. Candidates require user review."""
         kind = run["data"]["plan"]["decision_type"]
-        return {"facts": services.eligible_facts(scope.business_id, kind)}
+        return {"facts": services.eligible_facts(scope.business_id, kind, scope.run_id)}
 
     @register
     def get_artifact(artifact_id: str) -> dict[str, Any]:
         """Read an artifact, task result or calculation belonging to this run."""
         return artifact(artifact_id)
+
+    @register
+    def save_workspace_entry(entry: WorkspaceEntry) -> dict[str, Any]:
+        """Organize source information into a run-local record. Quotations are checked; interpretation is unverified."""
+        return save_entry(services, scope, entry)
+
+    @register
+    def save_workspace_entries(entries: list[WorkspaceEntry]) -> dict[str, Any]:
+        """Save 1-20 organized records in one call. Returns compact IDs; exact repeats are idempotent."""
+        if not 1 <= len(entries) <= 20:
+            raise DomainError("invalid_batch", "Save 1-20 workspace records per call.")
+        records = [save_entry(services, scope, entry) for entry in entries]
+        return {
+            "entries": [
+                {
+                    "id": r["id"],
+                    "subject": r["data"]["subject"],
+                    "attribute": r["data"]["attribute"],
+                }
+                for r in records
+            ]
+        }
+
+    @register
+    def query_workspace(query: str, offset: int, limit: int) -> dict[str, Any]:
+        """Search organized records in this run. Empty query lists all; paginate using next_offset. Limit 1-10."""
+        return query_entries(services, scope.business_id, scope.run_id, query, offset, limit)
+
+    @register
+    def propose_workspace_input(entry_id: str, field: str, value: str, unit: str) -> dict[str, Any]:
+        """Map a workspace record to a financial input candidate. User confirmation remains mandatory."""
+        record = artifact(entry_id)
+        data = record["data"]
+        if data.get("type") != "workspace_entry" or data["status"] in ["uncertain", "conflicting"]:
+            raise DomainError(
+                "unresolved_entry",
+                "Use an observed/assumed workspace entry; clarify conflicts first.",
+            )
+        evidence = data["evidence"][0]
+        candidate = FactCandidate(
+            decision_type=run["data"]["plan"]["decision_type"],
+            field=field,
+            value=value,
+            unit=unit,
+            source_id=evidence["source_id"],
+            location=evidence["location"],
+            evidence=evidence["quote"],
+        )
+        return services.submit_candidate(scope.business_id, candidate, workspace_entry=record)
 
     @register
     def submit_fact_candidate(candidate: FactCandidate) -> dict[str, Any]:

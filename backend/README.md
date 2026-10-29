@@ -36,14 +36,14 @@ existing database and previous runs are preserved; the script does not reset the
 To supply a different question:
 
 ```bash
-.venv/bin/python backend/scripts/live_demo.py --question "Should I host a promotional event? Use the accepted fictional inputs."
+.venv/bin/python backend/scripts/live_demo.py --question "Should I host a promotional event? Extract inputs from the supplied documents."
 ```
 
-The original default question is unchanged. If you want a financial simulation under
+The default question now asks the parser to extract inputs and request review. If you want a financial simulation under
 specified operational assumptions, explicitly provide those assumptions. For example:
 
 ```bash
-.venv/bin/python backend/scripts/live_demo.py --question "Evaluate switching suppliers using the accepted fictional inputs. For this financial scenario, assume shipping is charged once per month in which an inventory purchase occurs; supplier quality and reliability are equivalent; no cancellation penalties or extra contractual obligations apply; and storage capacity is sufficient with no extra storage cost. Treat these as explicit fictional assumptions, disclose them, and do not present the simulation as a complete operational recommendation."
+.venv/bin/python backend/scripts/live_demo.py --question "Evaluate switching suppliers using the supplied documents. For this financial scenario, assume shipping is charged once per month in which an inventory purchase occurs; supplier quality and reliability are equivalent; no cancellation penalties or extra contractual obligations apply; and storage capacity is sufficient with no extra storage cost. Treat these as explicit fictional assumptions, disclose them, and do not present the simulation as a complete operational recommendation."
 ```
 
 Only use assumptions you actually intend for the fictional scenario. Risk checks have
@@ -71,8 +71,8 @@ backend/var/runs/<run_id>/outputs.json
 
 These exports are not full model request/response transcripts. Raw tool arguments/results
 and model reasoning are not newly recorded. Export files contain no API key. Only
-AI-eligible demo sources/facts are exported as available inputs, even if local-only files
-were uploaded to the same business.
+AI-eligible sources/facts are exported as available inputs. New uploads are eligible for
+OpenAI analysis; older records explicitly marked ineligible remain excluded.
 
 To inspect a finished run through HTTP, start the API:
 
@@ -132,16 +132,14 @@ or retried. Create a new run with clarified assumptions when appropriate.
 - `demo.py`: controlled fictional business inputs, never canned agent responses.
 - `prompts/`: common instructions and role-specific instructions. Research remains disabled.
 
-The source store, existing runs, calculation semantics, prompts, financial engine,
-review requirements, risk blocking, and frontend were not changed by the live-only update.
+Existing historical runs, financial formulas, risk checks, and the frontend are preserved.
 
 ## Data policy and limits
 
-Live refers to real API execution, not permission to transmit real business records.
-Only server-seeded fictional data is AI-eligible. Ordinary uploads remain local-only.
-CSV, XLSX, UTF-8 TXT, and text-based PDF parsing remain supported. No OCR, live database
-connector, search provider, or hosted web-search fallback is configured. User query text
-and clarification answers are sent to OpenAI, so use fictional content in those fields.
+Uploaded business files are now approved for agent analysis: relevant excerpts, questions,
+and clarification answers may be sent to OpenAI. CSV, XLSX, UTF-8 TXT, and text-based PDF
+remain supported. No OCR, live database connector, or web research is configured.
+Previously stored sources marked ineligible stay excluded; reupload them if needed.
 
 The backend is single-user, local-only and unauthenticated. Bind to loopback. SQLite/source
 files are unencrypted. No production hosting, multi-tenancy, migrations or durable worker
@@ -181,10 +179,9 @@ internal bugs still produce diagnostic logs and a generic model-facing error.
 
 ## Revised, inspectable business-record demo
 
-The current fixture bundle is documented in [demo_data/coffee_shop/README.md](demo_data/coffee_shop/README.md).
-Open [the local preview](demo_data/coffee_shop/index.html) to see the raw records and
-normalized inputs. It replaces the old generated daily product totals and single
-assumptions file for **new** demo runs. Existing historical runs are preserved.
+The raw fixture records are in [demo_data/coffee_shop](demo_data/coffee_shop).
+They replace the old generated daily product totals and single assumptions file for
+new demo runs. Existing historical runs are preserved.
 
 The bundle uses a receipt-level POS CSV without product costs, supplier invoice text
 copies, a supplier quote email and informal owner notes. The POS baseline now leaves
@@ -193,6 +190,64 @@ retained as evidence without inferring an unsupported financial baseline. Known 
 and legacy cost-enriched sales schemas receive deterministic aggregation.
 
 Use `GET /api/businesses/{id}/sources/{source_id}` for the actual stored source contents.
-The CLI prints the preview path and records the fixture version/fingerprint in inputs.json.
-The fixture's explicit source-to-field index remains prepared demo wiring; general document
-extraction, agent structure, financial formulas and supported decision types are unchanged.
+The CLI prints the input directory and records the fixture version/fingerprint in inputs.json.
+The manifest's source-to-field index is reference material only: demo seeding no longer loads
+it as accepted financial facts. Existing datasets/runs are retained; document-based demos
+receive a separate business record.
+
+
+## Run workspace and batches of files
+
+The Data Parser now organizes relevant evidence into run-local JSON records in the existing
+SQLite store. Each record contains subject, attribute, value, unit, period, status
+(observed/assumed/uncertain/conflicting), notes, and exact source quotations. MCP tools
+`save_workspace_entry` / `save_workspace_entries` write records; `query_workspace` searches
+and paginates them. Only the parser writes; other agents can query. Evidence quotations
+are checked against the scoped source, but this does not prove the interpretation is correct.
+No vector database or generated SQL is used.
+
+`propose_workspace_input` maps an organized record to a typed numerical candidate with
+workspace lineage. Uncertain/conflicting records cannot be promoted. Candidates still
+require user confirmation before deterministic calculation. The parser is required to
+return a workspace artifact on completion. Organization is question-focused, not a guarantee
+that every row in every file has been interpreted. Existing deterministic sales summaries
+are available for supported table schemas.
+
+Run a batch from the repository root:
+
+```bash
+.venv/bin/python backend/scripts/live_demo.py --input-folder "/absolute/path/to/records" --question "Would switching to Supplier B save money over 12 months?"
+```
+
+The folder is nonrecursive; only supported extensions are loaded. Unchanged batches reuse
+the same source records. XLSX must contain one sheet for this CLI; use the upload API with
+an explicit sheet for multi-sheet workbooks. Inputs are parsed before creating the business.
+The default command still uses the coffee-shop documents, now without prefilled facts.
+
+To upload through the API: create a business, POST each file to
+`/api/businesses/{id}/sources`, then POST a run with that business ID. Inspect organized
+records at `GET /api/runs/{id}/workspace?query=&offset=0&limit=10` or in the CLI export's
+`outputs.json` → `workspace`. Query terms use case-insensitive substring AND matching,
+not semantic search. Follow `next_offset` for more records. Raw records remain accessible
+through the source endpoint. `outputs.json` also includes run-created facts and questions.
+
+A first run will normally stop at `waiting_for_input` to review extracted numbers. Start
+the API on the same database, GET the run's questions, and POST answers to
+`/api/runs/{id}/answers`, for example:
+
+```json
+{"answers":[{"question_id":"question_...","accept_candidate":true}]}
+```
+
+Supply all open answers (or reject incorrect candidates); the existing workflow resumes
+once all questions are answered. CLI exports are snapshots and do not refresh after API
+resume. Accepted business facts can be reused on later runs; the workspace itself is scoped
+to one run, survives pause/retry, and is retained for inspection rather than auto-deleted.
+There is no cross-run organized-memory cache or automatic expiry.
+
+Limits now allow 16 turns per agent and 48 model requests per run (previously 6 and 24)
+to accommodate organizing documents and reviewing inputs. The existing cost, time, context,
+and tool-call limits still apply. No paid evaluation was performed for this change, so real
+extraction quality and large-batch behavior still require a live trial. Supported financial
+questions remain supplier switching and one promotional event; organizing more kinds of
+records does not add financial models.

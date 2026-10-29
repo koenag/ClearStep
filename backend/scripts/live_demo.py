@@ -13,10 +13,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.config import Settings
 from app.contracts import RunRequest
+from app.data import SUPPORTED, parse_file
 from app.demo import DEMO_FOLDER, seed_demo
 from app.main import create_app
 
-DEFAULT_QUESTION = "Should I switch coffee bean suppliers? Use the fictional accepted demo inputs."
+DEFAULT_QUESTION = "Should I switch coffee bean suppliers? Extract inputs from the supplied documents and ask me to review them."
 
 
 def write_json(path, data):
@@ -25,12 +26,39 @@ def write_json(path, data):
     path.chmod(0o600)
 
 
-async def run_demo(settings, question):
+def load_folder(services, folder):
+    """Load a flat batch of supported files, reusing an unchanged batch on later runs."""
+    import hashlib
+
+    files = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED)
+    if not files:
+        raise ValueError("The input folder contains no supported files.")
+    payloads = [(p.name, p.read_bytes()) for p in files]
+    digest = hashlib.sha256()
+    for name, content in payloads:
+        digest.update(json.dumps([name, len(content)]).encode())
+        digest.update(content)
+    fingerprint = digest.hexdigest()
+    for business in services.store.list("business"):
+        if business["data"].get("folder_sha256") == fingerprint:
+            return business
+    parsed = {name: parse_file(name, content, services.settings) for name, content in payloads}
+    business = services.store.create(
+        "business",
+        {"name": folder.name, "currency": "USD", "folder_sha256": fingerprint},
+        key="input_folder:" + fingerprint,
+    )
+    for name, content in payloads:
+        services.upload(business["id"], name, content, _parsed=parsed[name])
+    return business
+
+
+async def run_demo(settings, question, input_folder=None):
     settings.validate()
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         services = app.state.services
-        business = seed_demo(services)
+        business = load_folder(services, input_folder) if input_folder else seed_demo(services)
         run = app.state.executor.create_run(
             RunRequest(business_id=business["id"], question=question)
         )
@@ -59,7 +87,7 @@ async def run_demo(settings, question):
                 "note": "Available business inputs at launch, not a full model request transcript.",
             },
         )
-        print(f"Demo records preview: {(DEMO_FOLDER / 'index.html').resolve()}", flush=True)
+        print(f"Input records: {input_folder or DEMO_FOLDER}", flush=True)
         print(f"Run: {run['id']}", flush=True)
         print(f"Question: {question}", flush=True)
         print(f"Inputs: {(folder / 'inputs.json').resolve()}", flush=True)
@@ -73,8 +101,12 @@ async def run_demo(settings, question):
             ("event", "events"),
             ("artifact", "artifacts"),
             ("calculation", "calculations"),
+            ("fact", "facts"),
         ]:
             snapshot[name] = services.store.list(kind, run_id=run["id"])
+        snapshot["workspace"] = [
+            a for a in snapshot["artifacts"] if a["data"].get("type") == "workspace_entry"
+        ]
         write_json(folder / "outputs.json", snapshot)
         print(
             json.dumps(
@@ -108,10 +140,15 @@ def main():
     parser.add_argument(
         "--question",
         default=DEFAULT_QUESTION,
-        help="Business question and any explicitly accepted fictional assumptions.",
+        help="Business question to answer using the supplied records.",
+    )
+    parser.add_argument(
+        "--input-folder",
+        type=Path,
+        help="Folder of CSV/XLSX/TXT/text-PDF files. Excerpts may be sent to OpenAI. Nonrecursive.",
     )
     args = parser.parse_args()
-    return asyncio.run(run_demo(Settings.from_env(), args.question))
+    return asyncio.run(run_demo(Settings.from_env(), args.question, args.input_folder))
 
 
 if __name__ == "__main__":

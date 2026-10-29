@@ -58,7 +58,7 @@ class Executor:
         self.jobs = {}
 
     def create_run(self, request):
-        self.services.require_demo(request.business_id)
+        self.services.business(request.business_id)
         return self.services.store.create(
             "run",
             {
@@ -115,7 +115,7 @@ class Executor:
             candidates = [
                 f
                 for f in self.services.eligible_facts(
-                    run["business_id"], run["data"]["plan"]["decision_type"]
+                    run["business_id"], run["data"]["plan"]["decision_type"], run["id"]
                 )
                 if f["data"]["status"] == "candidate"
             ]
@@ -148,6 +148,13 @@ class Executor:
                 for id in result.artifact_ids
             ]
             role = task["data"]["role"]
+            if role == "data_parser" and not any(
+                a["kind"] == "artifact" and a["data"].get("type") == "workspace_entry"
+                for a in artifacts
+            ):
+                raise DomainError(
+                    "missing_workspace", "Data extraction requires a saved workspace record."
+                )
             if role == "scenario" and not any(a["kind"] == "calculation" for a in artifacts):
                 raise DomainError(
                     "missing_calculation",
@@ -226,7 +233,7 @@ class Executor:
 
     async def _execute(self, id):
         run = self.services.store.get(id, "run")
-        self.services.require_demo(run["business_id"])
+        self.services.business(run["business_id"])
         if not run["data"]["plan"]:
             run = self.change_run(id, status="planning", error=None)
             task = self.services.store.create(
@@ -361,7 +368,7 @@ class Executor:
                 for a in t["data"]["result"]["artifact_ids"]
             ],
             "limitations": [
-                "Web research disabled. All business data is fictional.",
+                "Web research disabled. Results depend on supplied records and confirmed assumptions.",
                 "Narrative is model-generated; financial tables and summary are populated by deterministic calculations.",
             ],
         }

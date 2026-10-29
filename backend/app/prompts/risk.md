@@ -11,3 +11,6 @@ Field names, guessed IDs, truncated IDs and IDs from other runs/businesses are n
 valid evidence references. If submit_risk_findings returns invalid_evidence_reference,
 retrieve the relevant evidence again and resubmit using exact returned IDs. A failed
 submission stores no findings; do not claim a review was saved without an artifact ID.
+
+Query the run workspace for organized constraints, assumptions and conflicting records.
+Workspace artifact IDs are valid evidence references; inspect original excerpts only when needed.

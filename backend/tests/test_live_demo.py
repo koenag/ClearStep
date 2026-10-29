@@ -27,18 +27,16 @@ async def test_live_entry_exports_available_inputs_and_actual_saved_outputs(sett
     module = script_module()
     monkeypatch.setattr(module, "create_app", lambda config: create_app(config, DemoModel()))
     config = replace(settings, openai_api_key="synthetic_test_key")
-    assert await module.run_demo(config, "Should I switch suppliers?") == 0
+    assert await module.run_demo(config, "Should I switch suppliers?") == 1
     folder = next((settings.data_dir / "runs").iterdir())
     inputs = json.loads((folder / "inputs.json").read_text())
     outputs = json.loads((folder / "outputs.json").read_text())
     assert inputs["question"] == "Should I switch suppliers?"
-    assert inputs["available_facts"] and inputs["available_sources"]
+    assert not inputs["available_facts"] and inputs["available_sources"]
     assert all(f["data"]["ai_eligible"] for f in inputs["available_facts"])
-    assert outputs["run"]["data"]["status"] == "completed"
-    assert (
-        outputs["calculations"][0]["data"]["analysis"]["scenarios"][1]["result"]["net_benefit"]
-        == 1880
-    )
+    assert outputs["run"]["data"]["status"] == "waiting_for_input"
+    assert outputs["calculations"] == []
+    assert outputs["workspace"]
     assert outputs["tasks"] and outputs["events"] and outputs["artifacts"] and outputs["usage"]
     assert "synthetic_test_key" not in json.dumps(inputs) + json.dumps(outputs)
 

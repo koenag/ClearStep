@@ -1,3 +1,21 @@
+# Evidence workspace update — October 28, 2026
+
+- Backend suite: **86 passed** (25.76 seconds); Ruff and compileall passed.
+- Added real embedded MCP checks for workspace writes, exact source quotations,
+  idempotency, search/pagination, role permissions, business/run isolation,
+  unresolved-entry rejection, and preservation of assumed provenance/lineage.
+- A provider-boundary test exercises organization → input candidate → user review →
+  resume → deterministic calculation, retaining the workspace evidence chain.
+- Folder ingestion tests cover mixed CSV/TXT input, unchanged-batch reuse,
+  document-only seeding, and parse failure before business creation.
+- Real uploads are now AI eligible as authorized. Prior explicitly ineligible records
+  remain excluded. New demo seeds contain raw documents and no accepted facts.
+- No paid model request was executed. Extraction quality, complete document coverage,
+  live cost, and behavior on large unfamiliar batches have not been established.
+- Financial formulas and supported question types remain unchanged.
+
+Earlier verification describes preceding versions.
+
 # Realistic business-record demo update — October 28, 2026
 
 - Backend suite: **82 passed** (22.67 seconds); Ruff passed.

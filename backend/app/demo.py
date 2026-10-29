@@ -1,7 +1,6 @@
-"""Seed versioned synthetic records from an inspectable fixture bundle.
+"""Seed only raw synthetic documents; financial facts must be extracted and reviewed.
 
-The manifest explicitly maps this known dataset to model inputs. It is demo
-wiring, not a general document extractor or an owner-supplied business record.
+The old manifest's fact mapping is reference material, never loaded as accepted facts.
 """
 
 import hashlib
@@ -9,7 +8,6 @@ import json
 from pathlib import Path
 
 from app.data import parse_file
-from app.service import INPUT_MODELS, input_unit
 
 DEMO_FOLDER = Path(__file__).resolve().parents[1] / "demo_data" / "coffee_shop"
 
@@ -35,22 +33,12 @@ def seed_demo(services):
         b
         for b in services.store.list("business")
         if b["data"].get("seeded_demo") and b["data"].get("dataset_sha256") == fingerprint
+        and b["data"].get("extraction_mode") == "documents"
     ]
     if existing:
         return existing[0]
-    # Validate the complete fixture before writing anything, so editing an input
-    # without its fact mapping cannot leave a half-seeded business behind.
+    # Parse all files before writing a new business.
     parsed = {name: parse_file(name, content, services.settings) for name, content in files.items()}
-    for kind, model in INPUT_MODELS.items():
-        inputs = {f["field"]: f["value"] for f in manifest["facts"] if f["decision_type"] == kind}
-        if set(inputs) != set(model.model_fields):
-            raise ValueError("Demo input index must explicitly cover all model fields.")
-        model.model_validate(inputs)
-    for fact in manifest["facts"]:
-        chunks = parsed[fact["source"]]["chunks"]
-        if not any(fact["evidence"] in c["text"] for c in chunks):
-            raise ValueError("Demo evidence quotation is absent: " + fact["field"])
-        services.validate_field(fact["decision_type"], fact["field"], fact["value"])
     # New datasets get a separate business. Historical inputs/runs stay intact.
     business = services.store.create(
         "business",
@@ -58,38 +46,13 @@ def seed_demo(services):
             "name": "Juniper Coffee (fictional business records)",
             "industry": "Coffee shop",
             "seeded_demo": True,
+            "extraction_mode": "documents",
             "currency": "USD",
             "dataset_version": manifest["dataset_version"],
             "dataset_sha256": fingerprint,
         },
-        key="demo_records:" + fingerprint,
+        key="demo_documents:" + fingerprint,
     )
-    sources = {
-        name: services.upload(business["id"], name, content, seeded=True, _parsed=parsed[name])
-        for name, content in files.items()
-    }
-    for fact in manifest["facts"]:
-        source = sources[fact["source"]]
-        matches = [c for c in source["data"]["chunks"] if fact["evidence"] in c["text"]]
-        if not matches:
-            raise ValueError("Demo evidence quotation is absent: " + fact["field"])
-        services.validate_field(fact["decision_type"], fact["field"], fact["value"])
-        services.store.create(
-            "fact",
-            {
-                "decision_type": fact["decision_type"],
-                "field": fact["field"],
-                "value": fact["value"],
-                "unit": input_unit(fact["field"]),
-                "source_id": source["id"],
-                "location": matches[0]["location"],
-                "evidence": fact["evidence"],
-                "provenance": fact["provenance"],
-                "status": "accepted",
-                "ai_eligible": True,
-                "note": fact["note"],
-                "normalization": "Prepared demo index with source quotations; not general-purpose extraction.",
-            },
-            business["id"],
-        )
+    for name, content in files.items():
+        services.upload(business["id"], name, content, _parsed=parsed[name])
     return business

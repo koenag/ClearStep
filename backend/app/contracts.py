@@ -160,6 +160,23 @@ class FactCandidate(Strict):
     evidence: str = Field(min_length=1, max_length=1000)
 
 
+class SourceEvidence(Strict):
+    source_id: str
+    location: str = Field(min_length=1, max_length=200)
+    quote: str = Field(min_length=1, max_length=1000)
+
+
+class WorkspaceEntry(Strict):
+    subject: str = Field(min_length=1, max_length=200)
+    attribute: str = Field(min_length=1, max_length=200)
+    value: str = Field(min_length=1, max_length=2000)
+    unit: str = Field(max_length=100)
+    period: str = Field(max_length=200)
+    status: Literal["observed", "assumed", "uncertain", "conflicting"]
+    notes: str = Field(max_length=2000)
+    evidence: list[SourceEvidence] = Field(min_length=1, max_length=10)
+
+
 class InputRef(Strict):
     field: str
     fact_id: str

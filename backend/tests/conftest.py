@@ -109,7 +109,41 @@ class DemoModel:
         if not outputs:
             return self.call("get_facts", {})
         if role == "data_parser":
-            return final()
+            if len(outputs) == 1:
+                return self.call("query_workspace", {"query": "", "offset": 0, "limit": 10})
+            if outputs[1]["entries"]:
+                return final(artifact_ids=[outputs[1]["entries"][0]["id"]])
+            if len(outputs) == 2:
+                return self.call("list_sources", {})
+            if len(outputs) == 3:
+                return self.call(
+                    "read_source_excerpt",
+                    {"source_id": outputs[-1]["sources"][-1]["id"], "part": 0},
+                )
+            if len(outputs) == 4:
+                excerpt = outputs[-1]
+                return self.call(
+                    "save_workspace_entry",
+                    {
+                        "entry": {
+                            "subject": "Test records",
+                            "attribute": "context",
+                            "value": "Fixture context",
+                            "unit": "",
+                            "period": "",
+                            "status": "observed",
+                            "notes": "Test-only extraction",
+                            "evidence": [
+                                {
+                                    "source_id": excerpt["source_id"],
+                                    "location": excerpt["location"],
+                                    "quote": excerpt["text"][:100],
+                                }
+                            ],
+                        }
+                    },
+                )
+            return final(artifact_ids=[outputs[-1]["id"]])
         if role == "risk":
             if len(outputs) == 1:
                 return self.call("submit_risk_findings", {"findings": []})
@@ -162,4 +196,31 @@ def backend(settings):
 def seeded(backend):
     app, client, model = backend
     b = client.post("/api/demo/seed").json()
-    return app.state.services, b
+    # Explicit test-only financial fixtures; production demo seeding loads no facts.
+    from app.demo import load_bundle
+    from app.service import input_unit
+
+    services = app.state.services
+    manifest, _, _ = load_bundle()
+    sources = {s["data"]["filename"]: s for s in services.store.list("source", b["id"])}
+    for fact in manifest["facts"]:
+        source = sources[fact["source"]]
+        location = next(
+            c["location"] for c in source["data"]["chunks"] if fact["evidence"] in c["text"]
+        )
+        services.store.create(
+            "fact",
+            {
+                **{
+                    k: fact[k]
+                    for k in ["decision_type", "field", "value", "evidence", "provenance"]
+                },
+                "unit": input_unit(fact["field"]),
+                "source_id": source["id"],
+                "location": location,
+                "status": "accepted",
+                "ai_eligible": True,
+            },
+            b["id"],
+        )
+    return services, b

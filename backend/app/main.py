@@ -23,6 +23,7 @@ from app.demo import seed_demo
 from app.llm import OpenAIModel
 from app.service import Services
 from app.workflow import Executor
+from app.workspace import query_entries
 
 
 def create_app(settings=None, model=None):
@@ -84,7 +85,7 @@ def create_app(settings=None, model=None):
             "model": settings.openai_model,
             "run_mode": "live",
             "research_enabled": False,
-            "ai_data_policy": "seeded_demo_only",
+            "ai_data_policy": "uploaded_sources",
             "formats": ["csv", "xlsx", "txt", "text_pdf"],
             "estimated_budget_usd": str(settings.run_budget_usd),
         }
@@ -152,6 +153,11 @@ def create_app(settings=None, model=None):
     def events(id: str):
         store.get(id, "run")
         return store.list("event", run_id=id)
+
+    @app.get("/api/runs/{id}/workspace")
+    def workspace(id: str, query: str = "", offset: int = 0, limit: int = 10):
+        run = store.get(id, "run")
+        return query_entries(services, run["business_id"], id, query, offset, limit)
 
     @app.post("/api/runs/{id}/answers", status_code=202)
     async def answer(id: str, req: Answers):

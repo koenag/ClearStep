@@ -108,13 +108,13 @@ def test_real_workspace_and_upload_policy(backend, seeded):
     r = c.post(
         "/api/runs", json={"business_id": real["id"], "question": "Should I switch suppliers?"}
     )
-    assert r.status_code == 403
+    assert r.status_code == 202
     local = c.post(
         f"/api/businesses/{b['id']}/sources",
         files={"file": ("quote.txt", b"Private supplier terms", "text/plain")},
     )
     assert local.status_code == 201
-    assert local.json()["data"]["ai_eligible"] is False
+    assert local.json()["data"]["ai_eligible"] is True
     assert "chunks" not in local.json()["data"]
     assert (
         c.post(

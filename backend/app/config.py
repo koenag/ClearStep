@@ -20,8 +20,8 @@ class Settings:
     max_rows: int = 20000
     max_pdf_pages: int = 50
     max_document_chars: int = 150000
-    max_agent_turns: int = 6
-    max_run_calls: int = 24
+    max_agent_turns: int = 16
+    max_run_calls: int = 48
     max_tool_calls: int = 60
     max_output_tokens: int = 4000
     max_context_chars: int = 60000

@@ -5,7 +5,6 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
 from app import demo
 
 
@@ -66,9 +65,10 @@ def test_fixture_changes_use_a_new_business_and_validate_before_writes(
     count = len(services.store.list("business"))
     manifest["facts"][0]["evidence"] = "A quotation absent from every record."
     (folder / "manifest.json").write_text(json.dumps(manifest))
-    with pytest.raises(ValueError, match="quotation is absent"):
-        demo.seed_demo(services)
-    assert len(services.store.list("business")) == count
+    # The old mapping is reference-only; it no longer drives financial extraction.
+    fresh = demo.seed_demo(services)
+    assert len(services.store.list("business")) == count + 1
+    assert services.store.list("fact", fresh["id"]) == []
 
 
 def test_preview_and_source_bundle_can_be_rebuilt_deterministically(tmp_path, monkeypatch):
