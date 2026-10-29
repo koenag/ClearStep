@@ -138,6 +138,21 @@ class Services:
                 "invalid_evidence",
                 "Evidence must be an exact excerpt at the specified source location.",
             )
+        # Re-reading the same document must not ask the user to confirm an
+        # identical value again. A different value still needs explicit review.
+        for fact in (
+            self.eligible_facts(business_id, candidate.decision_type) if workspace_entry else []
+        ):
+            data = fact["data"]
+            if (
+                data["status"] == "accepted"
+                and data.get("confirmed_by_user")
+                and fact["run_id"] == workspace_entry["run_id"]
+                and data["field"] == candidate.field
+                and data["unit"] == candidate.unit
+                and Decimal(data["value"]) == Decimal(candidate.value)
+            ):
+                return fact
         # The candidate value is not authoritative even when its quotation exists.
         workspace_data = {}
         if workspace_entry:
@@ -374,8 +389,48 @@ class Services:
                 if q["data"]["status"] == "open"
             ]
             if not remaining:
+                eligible = [
+                    f
+                    for f in self.store.list("fact", run["business_id"], session=db)
+                    if f["data"]["decision_type"] == kind
+                    and f["data"]["ai_eligible"]
+                    and (f["data"]["status"] == "accepted" or f["run_id"] in [None, run["id"]])
+                ]
+                confirmed = {
+                    f["data"]["field"] for f in eligible if f["data"]["status"] == "accepted"
+                }
+                pending = any(f["data"]["status"] == "candidate" for f in eligible)
+                workspace = [
+                    a["id"]
+                    for a in self.store.list("artifact", run_id=run["id"], session=db)
+                    if a["data"].get("type") == "workspace_entry"
+                ]
+                extraction_ready = (
+                    bool(workspace)
+                    and not pending
+                    and set(INPUT_MODELS[kind].model_fields) <= confirmed
+                )
                 for task in self.store.list("task", run_id=run["id"], session=db):
                     if task["data"].get("phase") == "execute":
+                        if task["data"]["role"] == "data_parser":
+                            if task["data"]["status"] == "completed":
+                                continue
+                            if task["data"]["status"] == "needs_input" and extraction_ready:
+                                self.store.patch(
+                                    task,
+                                    {
+                                        "status": "completed",
+                                        "result": {
+                                            "status": "completed",
+                                            "summary": "Extracted financial inputs confirmed by the user.",
+                                            "artifact_ids": workspace[:20],
+                                            "questions": [],
+                                            "plan": None,
+                                        },
+                                    },
+                                    db,
+                                )
+                                continue
                         self.store.patch(task, {"status": "pending", "result": None}, db)
                 return self.store.patch(run, {"status": "created"}, db)
             return run

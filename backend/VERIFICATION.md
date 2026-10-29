@@ -1,3 +1,45 @@
+# Conditional cost comparison policy — October 28, 2026
+
+- Backend: **96 passed** (28.72 seconds); frontend logic: **6 passed**.
+- Ruff, compileall, JavaScript syntax, and whitespace checks passed.
+- Removed conflicting blanket blocking instructions for all material unmodeled risks.
+  Unverified quality/reliability are informational scope limitations for a conditional
+  cost comparison; known invalidating constraints and conflicting inputs still block.
+- MCP/workflow regression confirms informational quality/reliability findings allow a
+  calculated report with caveats, while a review-required horizon conflict blocks before math.
+- Completed reports now expose risk findings to the owner UI and text download.
+- Tests use a provider-boundary test model. No paid live request was made; actual model
+  classification under the revised prompts remains unverified.
+
+# POC supplier dataset v2 — October 28, 2026
+
+- Backend suite: **94 passed** (27.37 seconds); Ruff and whitespace checks passed.
+- Revised synthetic records explicitly bind generic procurement units to pounds,
+  distinguish the three-month history from the 12-month forecast, and cover the
+  full forecast with written supplier price/delivery terms.
+- Reference test verifies the unit mapping, dates, shipping quantity range, and
+  12-month deterministic net benefit of $1,880. Fixture regeneration remains reproducible.
+- Existing historical uploads/runs were inspected read-only and remain unchanged.
+- Isolated live trial returned model_unavailable; permission for the network-enabled
+  retry was declined. No live completion is claimed. The failed trial's reserved
+  usage estimate is not proof of actual billing.
+
+# Execution efficiency and practical limits — October 28, 2026
+
+- Backend: **93 passed** (27.92 seconds); frontend logic: **6 passed**.
+- Ruff, compileall, JavaScript syntax, and git whitespace checks passed.
+- Regression simulates full document extraction of 13 supplier inputs through real MCP,
+  partial then final user confirmation, risk checks, calculation, and synthesis.
+  It completes with **9 MCP calls and 14 model requests** under test limits of 15/16.
+- Confirms no parser restart after confirmation, immediate pause after request_input,
+  batched input proposals, reuse of same-run user-confirmed inputs, and .env limit validation.
+- Existing rejection, conflicting-value, evidence, scope, cost, timeout, and tool-limit
+  regression checks remain passing. No numerical review or financial model checks removed.
+- Effective defaults: 32 turns/task, 96 requests/run, 160 tools/run, 600 seconds/execution.
+  Estimated spending budget remains unchanged.
+- Recent saved runs inspected read-only; no historical runs modified or paid model call made.
+  Test call counts use a provider-boundary test model, not a live extraction benchmark.
+
 # Minimal owner interface — October 28, 2026
 
 - Backend suite: **91 passed** (27.05 seconds); frontend logic: **6 passed**.

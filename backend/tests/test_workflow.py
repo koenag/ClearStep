@@ -9,6 +9,75 @@ from conftest import final, plan
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("severity", ["info", "review_required"])
+async def test_conditional_cost_comparison_displays_caveats_but_blocks_invalid_inputs(
+    backend, seeded, severity
+):
+    import json
+
+    from conftest import DemoModel
+
+    app, _, _ = backend
+    services, business = seeded
+    if severity == "review_required":
+        horizon = next(
+            f
+            for f in services.eligible_facts(business["id"], "supplier_switch")
+            if f["data"]["field"] == "horizon"
+        )
+        services.store.patch(horizon, {"value": "3"})
+    caveat = "Supplier quality and reliability are unverified and are not priced. Savings are conditional on equivalent performance; assess suitability before switching."
+    conflict = "Confirmed horizon is 3 months, conflicting with the requested 12-month comparison."
+
+    class RiskModel(DemoModel):
+        async def respond(self, **kwargs):
+            ctx = json.loads(kwargs["history"][0]["content"])
+            outputs = [
+                json.loads(i["output"])
+                for i in kwargs["history"]
+                if i.get("type") == "function_call_output"
+            ]
+            if ctx["role"] == "risk" and len(outputs) == 1:
+                evidence = next(
+                    f["id"] for f in outputs[0]["facts"] if f["data"]["field"] == "horizon"
+                )
+                return self.call(
+                    "submit_risk_findings",
+                    {
+                        "findings": [
+                            {
+                                "description": caveat if severity == "info" else conflict,
+                                "severity": severity,
+                                "evidence_ids": [evidence],
+                            }
+                        ]
+                    },
+                )
+            return await super().respond(**kwargs)
+
+    app.state.executor.runner.model = RiskModel()
+    run = app.state.executor.create_run(
+        RunRequest(
+            business_id=business["id"],
+            question="Would switching suppliers save money over 12 months?",
+        )
+    )
+    await app.state.executor.execute(run["id"])
+    result = services.store.get(run["id"])
+    if severity == "info":
+        assert result["data"]["status"] == "completed", result["data"]
+        report = result["data"]["report"]
+        assert report["analysis"]["scenarios"][1]["result"]["net_benefit"] == 1880
+        assert any(f["description"] == caveat for f in report["risk_findings"])
+        assert all(f["severity"] == "info" for f in report["risk_findings"])
+        assert any("conditional financial comparison" in text for text in report["limitations"])
+    else:
+        assert result["data"]["status"] == "blocked"
+        assert result["data"]["report"] is None
+        assert services.store.list("calculation", run_id=run["id"]) == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("kind,expected", [("supplier_switch", 1880), ("promotional_event", 332.8)])
 async def test_complete_agent_workflow_with_real_mcp(backend, seeded, kind, expected):
     app, client, model = backend

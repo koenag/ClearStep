@@ -97,6 +97,14 @@ Terms: minimum order 10 bags (50 lb). Delivery is charged per shipment,
 not per bag. No subscription or fixed-term supply agreement.
 """)
     files["current_supplier_invoices.txt"] = "\n--- next invoice ---\n\n".join(invoices)
+    files["current_supplier_invoices.txt"] += """
+--- supplier account confirmation, received 2026-10-20 (FICTIONAL) ---
+Riverbend confirms that Juniper can continue purchasing House Espresso at $12.00
+per pound, with $40.00 delivery per consolidated shipment of 50-200 lb, from
+2026-11-01 through 2027-10-31. These rates are fixed for all 12 months.
+The minimum remains 50 lb. This price commitment does not require exclusivity,
+a minimum annual purchase, or a cancellation payment if Juniper changes suppliers.
+"""
     files["alternative_supplier_quote_email.txt"] = """From: sales@cedarcrest.example
 To: owner@juniper.example
 Date: 2026-10-15
@@ -112,7 +120,10 @@ Delivery is $50.00 per shipment at this order size, not per bag. With one
 20-bag delivery the total is $1,050.00 before any applicable taxes.
 We can schedule one consolidated delivery at the beginning of each month.
 Payment is due within 14 days; there is no sign-up or account-opening fee.
-This quote is valid through 2026-11-30. Prices beyond that date are not guaranteed.
+If Juniper accepts by 2026-10-31, the $10.00 per pound price and $50.00 delivery
+charge per consolidated shipment of 50-200 lb are fixed from 2026-11-01 through
+2027-10-31, covering the entire 12-month comparison. The minimum remains 50 lb.
+This is a written price commitment, not a requirement to purchase a fixed volume.
 
 Regards,
 Cedar Crest wholesale team
@@ -132,6 +143,8 @@ Invoices show 100 lb received in July, 110 lb in August, and 90 lb in September.
 So use including waste was 100, 105, and 95 lb. About 6 lb over the three
 months was spilled or used for dialling in; waste was not tracked daily.
 Do not treat drinks sold as pounds of coffee purchased.
+All supplier comparisons use pounds of roasted coffee: one comparison unit is
+one pound (1 lb), not one bag or one cup. A 5 lb bag contains five such units.
 
 Planning assumptions, not historical measurements:
 - Use 100 lb/month as the forward forecast, including normal waste.
@@ -144,8 +157,11 @@ Planning assumptions, not historical measurements:
   cost scenario. Equal reliability is an assumption, not verified performance.
 - No cancellation fee applies to our current arrangement. Storage can hold
   200 lb; assume no additional storage cost at the planned quantities.
-- Compare 12 months. Hold both prices flat for this first scenario, despite the
-  new quote's expiry; show the price-change risk rather than call it guaranteed.
+- Compare 12 future months: 2026-11-01 through 2027-10-31. The three months of
+  sales and invoice history are background records, not the forecast horizon.
+- Both suppliers have provided written fixed bean prices and delivery charges
+  covering that full period. Use zero price escalation during these 12 months.
+  Forecast demand and equal quality/reliability remain planning assumptions.
 
 The POS export does not include milk, pastry, labour, rent, or recipe costs.
 Neither net profit nor a measured shop-wide contribution margin is available.
@@ -172,6 +188,14 @@ invent a monthly repeat-sales curve or claim causal attribution.
 """
     files["analysis_settings.txt"] = """DEMO ANALYSIS SETTINGS - NOT BUSINESS HISTORY
 Forecast horizon: 12 months.
+Supplier forecast period: 2026-11-01 through 2027-10-31, inclusive.
+Historical records cover July-September only; do not use their 3-month length
+as the forecast horizon. This comparison is explicitly for 12 future months.
+For supplier calculations, 1 unit = 1 pound (lb) of roasted coffee.
+Therefore USD/unit means USD/lb, units/month means lb/month, and a minimum
+order of 50 units means 50 lb. All supplier prices, demand and order limits
+use this same pound-based unit; no bag-to-pound conversion is left unresolved.
+The forward quantity is 100 units/month = 100 lb/month, including normal waste.
 Current annual unit-price escalation: 0 (flat-price scenario assumption).
 Proposed annual unit-price escalation: 0 (flat-price scenario assumption).
 Supplier demand sensitivity: +/-20% around the forward forecast.
@@ -309,7 +333,7 @@ These are illustrative scenario controls, not estimated probability distribution
     files["manifest.json"] = (
         json.dumps(
             {
-                "dataset_version": "coffee_shop_records_v1",
+                "dataset_version": "coffee_shop_records_v2",
                 "description": "Synthetic business records. The fact index below is demo wiring, not an owner-supplied document or a general extraction system.",
                 "sources": list(files),
                 "facts": facts,
@@ -362,7 +386,7 @@ body{font:15px/1.6 system-ui,sans-serif;margin:0;background:#f5f7f7;color:#243b3
 </style><main><h1>Juniper Coffee: inspect the demo data</h1><p class="notice"><strong>All records are fictional.</strong> Business records are separate from owner forecasts and simulation settings. POS revenue is observed within this synthetic dataset; product costs, shop-wide margin and net profit are unavailable.</p><p>These are readable text copies of invoices and an email, plus a POS-style CSV. No scanned receipts or PDFs are implied. The source fixtures below are what the current demo seeds. Existing historical runs keep their previous sources.</p>"""
     document += (
         "".join(sections)
-        + f"""<section><h2>Normalized inputs used by this demo</h2><p>The seed explicitly maps these known fixtures into the existing model fields. This is a transparent fixture index, not proof of general document extraction. <a href="manifest.json">Inspect the complete mapping and evidence quotations.</a> In supplier calculations, one unit means one pound of roasted coffee.</p><div class="scroll"><table><thead><tr><th>Model</th><th>Field</th><th>Value</th><th>Provenance</th><th>Source</th><th>Interpretation</th></tr></thead><tbody>{rows}</tbody></table></div></section><section><h2>Currently supported questions</h2><p><strong>Supplier switching:</strong> compare the purchasing cash impact of the current supplier and one proposed supplier over a horizon. Example: “Would switching to Cedar Crest save money over 12 months?”</p><p><strong>Promotional event:</strong> simulate incremental contribution from one event, with explicit attendance, spending and repeat-visit assumptions. Example: “Would the Saturday tasting break even under the owner’s estimates?”</p><p>Hiring, pricing, loans, general profit strategy, autonomous research and arbitrary multi-decision forecasts are not modeled. Clarification or risk review can still stop a supported question.</p></section></main></html>"""
+        + f"""<section><h2>Reference inputs for this demo</h2><p>This fixture index is reference material; the live seed loads documents only, and the agent extracts inputs for user review. <a href="manifest.json">Inspect the reference mapping and evidence quotations.</a> In supplier calculations, one unit means one pound of roasted coffee.</p><div class="scroll"><table><thead><tr><th>Model</th><th>Field</th><th>Value</th><th>Provenance</th><th>Source</th><th>Interpretation</th></tr></thead><tbody>{rows}</tbody></table></div></section><section><h2>Currently supported questions</h2><p><strong>Supplier switching:</strong> compare the purchasing cash impact of the current supplier and one proposed supplier over a horizon. Example: “Would switching to Cedar Crest save money over 12 months?”</p><p><strong>Promotional event:</strong> simulate incremental contribution from one event, with explicit attendance, spending and repeat-visit assumptions. Example: “Would the Saturday tasting break even under the owner’s estimates?”</p><p>Hiring, pricing, loans, general profit strategy, autonomous research and arbitrary multi-decision forecasts are not modeled. Clarification or risk review can still stop a supported question.</p></section></main></html>"""
     )
     (FOLDER / "index.html").write_text(document)
 

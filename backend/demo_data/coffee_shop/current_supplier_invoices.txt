@@ -52,3 +52,10 @@ Paid by bank transfer on 2026-09-08.
 
 Terms: minimum order 10 bags (50 lb). Delivery is charged per shipment,
 not per bag. No subscription or fixed-term supply agreement.
+
+--- supplier account confirmation, received 2026-10-20 (FICTIONAL) ---
+Riverbend confirms that Juniper can continue purchasing House Espresso at $12.00
+per pound, with $40.00 delivery per consolidated shipment of 50-200 lb, from
+2026-11-01 through 2027-10-31. These rates are fixed for all 12 months.
+The minimum remains 50 lb. This price commitment does not require exclusivity,
+a minimum annual purchase, or a cancellation payment if Juniper changes suppliers.

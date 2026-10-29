@@ -9,6 +9,7 @@ dist/
 
 frontend/test-results/
 frontend/playwright-report/
+frontend/.vite/
 .ruff_cache/
 *.tsbuildinfo
 backend/var/

@@ -182,6 +182,13 @@ class InputRef(Strict):
     fact_id: str
 
 
+class WorkspaceInput(Strict):
+    entry_id: str
+    field: str
+    value: str = Field(min_length=1, max_length=100)
+    unit: str = Field(min_length=1, max_length=100)
+
+
 class Answer(Strict):
     question_id: str
     value: Decimal | None = Field(default=None, ge=0, le=10000000)

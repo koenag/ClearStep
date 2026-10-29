@@ -367,7 +367,14 @@ class Executor:
                 if t["data"]["role"] == "risk"
                 for a in t["data"]["result"]["artifact_ids"]
             ],
+            "risk_findings": [
+                finding
+                for artifact in self.services.store.list("artifact", run["business_id"], id)
+                if artifact["data"].get("type") == "risk"
+                for finding in artifact["data"]["findings"]
+            ],
             "limitations": [
+                "This is a conditional financial comparison, not a complete operational recommendation.",
                 "Web research disabled. Results depend on supplied records and confirmed assumptions.",
                 "Narrative is model-generated; financial tables and summary are populated by deterministic calculations.",
             ],

@@ -5,13 +5,14 @@ from decimal import Decimal
 from pathlib import Path
 
 from app.config import DomainError, LimitReached
-from app.contracts import AgentResult
+from app.contracts import AgentResult, Question
+from app.service import INPUT_MODELS
 from app.tools import ToolScope, ToolSession
 
 PROMPTS = Path(__file__).parent / "prompts"
 
 
-def compact_history(history, last_turn_start):
+def compact_history(history, last_turn_start, summary_chars=10000):
     """Replace older complete exchanges; preserve the latest response/tool-call pair intact."""
 
     def shorten(value):
@@ -30,7 +31,7 @@ def compact_history(history, last_turn_start):
     ]
     recent = []
     for output in reversed(outputs):
-        if len(json.dumps(recent + [output])) > 10000:
+        if len(json.dumps(recent + [output])) > summary_chars:
             break
         recent.insert(0, output)
     return [
@@ -56,7 +57,7 @@ class AgentRunner:
         upstream = []
         for id in task["data"].get("dependency_ids", []):
             upstream.append(self.services.store.get(id, "task", run["business_id"], run["id"]))
-        return {
+        context = {
             "run_id": run["id"],
             "task_id": task["id"],
             "phase": phase,
@@ -68,6 +69,70 @@ class AgentRunner:
             "research_enabled": False,
             "data_policy": "uploaded_sources",
         }
+        kind = (run["data"].get("plan") or {}).get("decision_type")
+        if phase == "execute" and kind in INPUT_MODELS:
+            context["input_contract"] = INPUT_MODELS[kind].model_json_schema()
+            facts = self.services.eligible_facts(run["business_id"], kind, run["id"])
+            context["facts"] = [
+                {
+                    "id": f["id"],
+                    **{
+                        k: f["data"].get(k)
+                        for k in ["field", "value", "unit", "status", "provenance", "source_id"]
+                    },
+                }
+                for f in facts
+            ]
+            context["missing_fields"] = sorted(
+                set(INPUT_MODELS[kind].model_fields)
+                - {f["data"]["field"] for f in facts if f["data"]["status"] == "accepted"}
+            )
+            workspace = [
+                a
+                for a in self.services.store.list("artifact", run["business_id"], run["id"])
+                if a["data"].get("type") == "workspace_entry"
+            ]
+            context["workspace_records"] = [
+                {
+                    "id": a["id"],
+                    **{
+                        k: str(a["data"][k])[:300]
+                        for k in ["subject", "attribute", "value", "unit", "period", "status"]
+                    },
+                }
+                for a in workspace[:20]
+            ]
+            context["workspace_total"] = len(workspace)
+            sources = [
+                s
+                for s in self.services.store.list("source", run["business_id"])
+                if s["data"]["ai_eligible"]
+            ]
+            context["sources"] = [
+                {"id": s["id"], "filename": s["data"]["filename"], "format": s["data"]["format"]}
+                for s in sources
+            ]
+            if task["data"]["role"] == "data_parser" and not workspace:
+                excerpts, size = [], 0
+                for source in sources:
+                    if source["data"]["format"] not in {"txt", "pdf"}:
+                        continue
+                    chunks = source["data"]["chunks"]
+                    chunk = next((c for c in chunks if c["text"]), None)
+                    if not chunk or size + len(chunk["text"][:3000]) > 12000:
+                        continue
+                    excerpts.append(
+                        {
+                            "source_id": source["id"],
+                            "location": chunk["location"],
+                            "text": chunk["text"][:3000],
+                            "part": 0,
+                            "total_parts": sum((len(c["text"]) + 2999) // 3000 for c in chunks),
+                        }
+                    )
+                    size += len(chunk["text"][:3000])
+                context["source_excerpts"] = excerpts
+        return context
 
     def budget(self, run_id, next_input_chars):
         settings = self.services.settings
@@ -139,7 +204,17 @@ class AgentRunner:
                     + len(json.dumps(tools.definitions))
                 )
                 if size > settings.max_context_chars:
-                    history = compact_history(history, last_turn_start)
+                    reserved = (
+                        len(instructions)
+                        + len(json.dumps(tools.definitions))
+                        + len(json.dumps([history[0], *history[last_turn_start:]]))
+                        + 1000
+                    )
+                    history = compact_history(
+                        history,
+                        last_turn_start,
+                        max(0, min(10000, settings.max_context_chars - reserved)),
+                    )
                     size = (
                         len(instructions)
                         + len(json.dumps(history))
@@ -238,5 +313,27 @@ class AgentRunner:
                         )
                     history.append(
                         {"type": "function_call_output", "call_id": call["call_id"], "output": text}
+                    )
+                # Asking the user is a checkpoint, not a reason for another model
+                # round of rereading sources while those questions remain open.
+                questions = [
+                    q
+                    for q in self.services.store.list("question", run_id=run["id"])
+                    if q["data"]["status"] == "open" and q["data"]["task_id"] == task["id"]
+                ]
+                if questions:
+                    return AgentResult(
+                        status="needs_input",
+                        summary="Please review the requested inputs before continuing.",
+                        artifact_ids=[],
+                        plan=None,
+                        questions=[
+                            Question(
+                                field=q["data"]["field"],
+                                reason=q["data"]["reason"],
+                                candidate_id=q["data"]["candidate_id"],
+                            )
+                            for q in questions
+                        ],
                     )
             raise LimitReached("Maximum agent turns reached.")

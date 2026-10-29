@@ -1,5 +1,13 @@
 DEMO ANALYSIS SETTINGS - NOT BUSINESS HISTORY
 Forecast horizon: 12 months.
+Supplier forecast period: 2026-11-01 through 2027-10-31, inclusive.
+Historical records cover July-September only; do not use their 3-month length
+as the forecast horizon. This comparison is explicitly for 12 future months.
+For supplier calculations, 1 unit = 1 pound (lb) of roasted coffee.
+Therefore USD/unit means USD/lb, units/month means lb/month, and a minimum
+order of 50 units means 50 lb. All supplier prices, demand and order limits
+use this same pound-based unit; no bag-to-pound conversion is left unresolved.
+The forward quantity is 100 units/month = 100 lb/month, including normal waste.
 Current annual unit-price escalation: 0 (flat-price scenario assumption).
 Proposed annual unit-price escalation: 0 (flat-price scenario assumption).
 Supplier demand sensitivity: +/-20% around the forward forecast.

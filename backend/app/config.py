@@ -20,12 +20,12 @@ class Settings:
     max_rows: int = 20000
     max_pdf_pages: int = 50
     max_document_chars: int = 150000
-    max_agent_turns: int = 16
-    max_run_calls: int = 48
-    max_tool_calls: int = 60
+    max_agent_turns: int = 32
+    max_run_calls: int = 96
+    max_tool_calls: int = 160
     max_output_tokens: int = 4000
     max_context_chars: int = 60000
-    max_run_seconds: int = 300
+    max_run_seconds: int = 600
     run_budget_usd: Decimal = Decimal("0.10")
     input_price_per_million: Decimal = Decimal("0.10")
     cached_price_per_million: Decimal = Decimal("0.01")
@@ -41,10 +41,17 @@ class Settings:
             openai_model=env.get("OPENAI_MODEL") or "gpt-6-luna",
             openai_api_key=env.get("OPENAI_API_KEY") or "",
             run_budget_usd=Decimal(env.get("RUN_BUDGET_USD") or "0.10"),
+            max_agent_turns=int(env.get("MAX_AGENT_TURNS") or cls.max_agent_turns),
+            max_run_calls=int(env.get("MAX_RUN_CALLS") or cls.max_run_calls),
+            max_tool_calls=int(env.get("MAX_TOOL_CALLS") or cls.max_tool_calls),
+            max_run_seconds=int(env.get("MAX_RUN_SECONDS") or cls.max_run_seconds),
             cors_origins=tuple((env.get("CORS_ORIGINS") or ",".join(cls.cors_origins)).split(",")),
         )
 
     def validate(self, *, require_api_key=True):
+        for name in ("max_agent_turns", "max_run_calls", "max_tool_calls", "max_run_seconds"):
+            if getattr(self, name) < 1:
+                raise ValueError(name.upper() + " must be a positive integer.")
         if not self.run_budget_usd.is_finite() or self.run_budget_usd <= 0:
             raise ValueError("RUN_BUDGET_USD must be finite and positive.")
         if self.openai_model != "gpt-6-luna":

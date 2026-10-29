@@ -78,7 +78,7 @@ async def test_long_agent_history_compacts_and_continues(seeded):
     from app.agents import AgentRunner
 
     services, business = seeded
-    services.settings = replace(services.settings, max_context_chars=26000)
+    services.settings = replace(services.settings, max_context_chars=45000)
     run, task, _ = make_scope(services, business, "data_parser")
     source = next(
         s for s in services.store.list("source", business["id"]) if s["data"]["format"] == "csv"

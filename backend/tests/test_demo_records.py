@@ -6,6 +6,29 @@ from decimal import Decimal
 from pathlib import Path
 
 from app import demo
+from app.financial.engine import analyze
+
+
+def test_poc_records_define_pounds_and_full_year_pricing():
+    manifest, files, _ = demo.load_bundle()
+    settings = files["analysis_settings.txt"].decode()
+    notes = files["owner_stock_and_switch_notes.txt"].decode()
+    quote = files["alternative_supplier_quote_email.txt"].decode()
+    current = files["current_supplier_invoices.txt"].decode()
+    assert "Forecast horizon: 12 months." in settings
+    assert "1 unit = 1 pound (lb)" in settings
+    assert "units/month means lb/month" in settings
+    assert "100 units/month = 100 lb/month" in settings
+    assert "not the forecast horizon" in notes
+    for record in [quote, current]:
+        assert "2026-11-01 through" in record and "2027-10-31" in record
+        assert "50-200 lb" in record
+    assert "Prices beyond that date are not guaranteed" not in quote
+    inputs = {
+        f["field"]: f["value"] for f in manifest["facts"] if f["decision_type"] == "supplier_switch"
+    }
+    base = analyze("supplier_switch", inputs)["scenarios"][1]["result"]
+    assert base["horizon"] == 12 and base["net_benefit"] == 1880
 
 
 def test_demo_record_sources_and_provenance_reconcile(seeded):

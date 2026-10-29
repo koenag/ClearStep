@@ -11,7 +11,14 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from app.config import DomainError
-from app.contracts import FactCandidate, InputRef, Question, RiskFinding, WorkspaceEntry
+from app.contracts import (
+    FactCandidate,
+    InputRef,
+    Question,
+    RiskFinding,
+    WorkspaceEntry,
+    WorkspaceInput,
+)
 from app.service import INPUT_MODELS
 from app.workspace import query_entries, save_entry
 
@@ -30,6 +37,7 @@ ROLE_TOOLS = {
         "save_workspace_entries",
         "query_workspace",
         "propose_workspace_input",
+        "propose_workspace_inputs",
     },
     "risk": {
         "query_workspace",
@@ -236,6 +244,28 @@ def create_server(services, scope: ToolScope):
         return services.submit_candidate(scope.business_id, candidate, workspace_entry=record)
 
     @register
+    def propose_workspace_inputs(inputs: list[WorkspaceInput]) -> dict[str, Any]:
+        """Propose 1-25 financial inputs in one call. Returns compact facts and per-item errors. Accepted identical values are reused."""
+        if not 1 <= len(inputs) <= 25:
+            raise DomainError("invalid_batch", "Propose 1-25 inputs per call.")
+        facts, errors = [], []
+        for index, item in enumerate(inputs):
+            try:
+                fact = propose_workspace_input(**item.model_dump())
+                facts.append(
+                    {
+                        "id": fact["id"],
+                        "field": fact["data"]["field"],
+                        "value": fact["data"]["value"],
+                        "unit": fact["data"]["unit"],
+                        "status": fact["data"]["status"],
+                    }
+                )
+            except DomainError as exc:
+                errors.append({"index": index, "code": exc.code, "message": exc.message[:700]})
+        return {"facts": facts, "errors": errors}
+
+    @register
     def submit_fact_candidate(candidate: FactCandidate) -> dict[str, Any]:
         """Propose a numerical fact with exact evidence. It remains unaccepted until user confirmation."""
         require_kind(candidate.decision_type)
@@ -354,7 +384,12 @@ class ToolSession:
         tools = (await self.client.list_tools()).tools
         for t in tools:
             schema = strict_schema(t.input_schema)
-            if t.name in {"request_input", "propose_workspace_input", "submit_fact_candidate"}:
+            if t.name in {
+                "request_input",
+                "propose_workspace_input",
+                "propose_workspace_inputs",
+                "submit_fact_candidate",
+            }:
                 record = self.services.store.get(self.scope.run_id, "run", self.scope.business_id)
                 kind = (record["data"].get("plan") or {}).get("decision_type")
                 if kind in INPUT_MODELS:
@@ -404,7 +439,12 @@ class ToolSession:
             validate(arguments, self.schemas[name])
         except Exception as exc:
             message = "Tool arguments do not match its schema."
-            if name in {"request_input", "propose_workspace_input", "submit_fact_candidate"}:
+            if name in {
+                "request_input",
+                "propose_workspace_input",
+                "propose_workspace_inputs",
+                "submit_fact_candidate",
+            }:
                 record = self.services.store.get(self.scope.run_id, "run", self.scope.business_id)
                 kind = (record["data"].get("plan") or {}).get("decision_type")
                 if kind in INPUT_MODELS:

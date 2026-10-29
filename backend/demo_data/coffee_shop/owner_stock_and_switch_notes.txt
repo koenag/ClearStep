@@ -9,6 +9,8 @@ Invoices show 100 lb received in July, 110 lb in August, and 90 lb in September.
 So use including waste was 100, 105, and 95 lb. About 6 lb over the three
 months was spilled or used for dialling in; waste was not tracked daily.
 Do not treat drinks sold as pounds of coffee purchased.
+All supplier comparisons use pounds of roasted coffee: one comparison unit is
+one pound (1 lb), not one bag or one cup. A 5 lb bag contains five such units.
 
 Planning assumptions, not historical measurements:
 - Use 100 lb/month as the forward forecast, including normal waste.
@@ -21,8 +23,11 @@ Planning assumptions, not historical measurements:
   cost scenario. Equal reliability is an assumption, not verified performance.
 - No cancellation fee applies to our current arrangement. Storage can hold
   200 lb; assume no additional storage cost at the planned quantities.
-- Compare 12 months. Hold both prices flat for this first scenario, despite the
-  new quote's expiry; show the price-change risk rather than call it guaranteed.
+- Compare 12 future months: 2026-11-01 through 2027-10-31. The three months of
+  sales and invoice history are background records, not the forecast horizon.
+- Both suppliers have provided written fixed bean prices and delivery charges
+  covering that full period. Use zero price escalation during these 12 months.
+  Forecast demand and equal quality/reliability remain planning assumptions.
 
 The POS export does not include milk, pastry, labour, rent, or recipe costs.
 Neither net profit nor a measured shop-wide contribution margin is available.

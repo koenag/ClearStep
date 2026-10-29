@@ -1,1 +1,43 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#0e746d"/><title>Clarity — Business decisions, grounded in numbers</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Turn your business records into a clearer financial decision.">
+  <title>Clearstep · Your next business decision</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="module" src="/assets/app.js"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/" aria-label="Clearstep home"><span class="brand-mark" aria-hidden="true">↗</span>clearstep<span class="brand-dot">.</span></a><span class="tagline">A clearer next step for your business</span></header>
+  <main>
+    <nav aria-label="Your progress"><ol class="steps"><li id="step-1" aria-current="step"><span>1</span> Add your information</li><li id="step-2"><span>2</span> Check the details</li><li id="step-3"><span>3</span> See your answer</li></ol></nav>
+    <div id="notice" role="alert" hidden></div>
+    <section id="setup" aria-labelledby="welcome">
+      <div class="intro"><p class="eyebrow">ONE DECISION AT A TIME</p><h1 id="welcome">Let’s make your next<br>decision a little clearer.</h1><p>Bring your records and a question.<br>We’ll help you work through the numbers.</p></div>
+      <div class="layout">
+        <form id="start-form" class="card">
+          <div class="section-heading"><span class="number">1</span><div><h2>Add your business files</h2><p>A folder of invoices, spreadsheets, quotes, or notes.</p></div></div>
+          <div class="upload-box"><svg width="44" height="40" viewBox="0 0 44 40" fill="none" aria-hidden="true"><path d="M4 12V7a3 3 0 0 1 3-3h10l4 5h16a3 3 0 0 1 3 3v21a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V12Z" stroke="currentColor" stroke-width="2"/><path d="M16 23h12m-6-6v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><h3>Start with what you have</h3><p>You don’t need to tidy your files first.</p><div class="upload-actions"><button type="button" id="choose-folder" class="button primary">Choose a folder</button><button type="button" id="choose-files" class="text-button">Or choose individual files</button></div><p class="fine">CSV, Excel (.xlsx), text files, and PDFs with selectable text</p></div>
+          <input type="file" id="folder-input" webkitdirectory multiple hidden>
+          <input type="file" id="files-input" accept=".csv,.xlsx,.txt,.pdf" multiple hidden>
+          <div id="file-summary" aria-live="polite"></div><ul id="file-list" class="file-list"></ul>
+          <div class="section-heading question-heading"><span class="number">2</span><div><h2><label for="question">What would you like to work out?</label></h2><p>Use your own words. A sentence or two is plenty.</p></div></div>
+          <textarea id="question" rows="3" minlength="3" maxlength="2000" required placeholder="For example: Would switching coffee suppliers save me money over the next year?"></textarea>
+          <p class="examples-label">Try a question</p><div class="examples"><button type="button" data-example="Would switching to the supplier in my quote save money over the next 12 months?">Compare two suppliers <span aria-hidden="true">↗</span></button><button type="button" data-example="Would the promotional event described in my notes cover its costs?">Plan a promotional event <span aria-hidden="true">↗</span></button></div>
+          <div class="submit-row"><button id="start-button" class="button primary large" type="submit">Help me work it out <span aria-hidden="true">→</span></button><p id="upload-progress" role="status"></p></div>
+          <p class="privacy">Relevant file contents are shared with OpenAI to prepare your answer. AI analysis may incur a charge. You’ll check the key numbers before we calculate.</p>
+        </form>
+        <aside class="help"><div class="help-icon" aria-hidden="true">✦</div><h2>A little help,<br>without the guesswork.</h2><p>Start with a supplier comparison or a promotional event. Those are the two decisions we can calculate today.</p><hr><h3>You stay in control</h3><ul><li>Your original files stay unchanged.</li><li>We’ll ask when important details are missing.</li><li>You review the numbers before they’re used.</li></ul><p class="help-note">A scan or photo of a document won’t work yet. Use a PDF where you can select the text.</p></aside>
+      </div>
+    </section>
+    <section id="working" class="state-card card" hidden aria-labelledby="working-title"><span class="spinner" aria-hidden="true"></span><p class="eyebrow">TAKING IT STEP BY STEP</p><h1 id="working-title">Looking through your information</h1><p id="working-description" role="status">Finding the details relevant to your question.</p><p class="muted">This can take a few minutes. You can leave this page open.</p><button type="button" class="text-button stop-button">Stop this analysis</button></section>
+    <section id="review" hidden aria-labelledby="review-title"><div class="intro compact"><p class="eyebrow">YOU KNOW YOUR BUSINESS BEST</p><h1 id="review-title">Let’s check a few details.</h1><p>These numbers need your review. Nothing below has been confirmed for you.</p></div><form id="review-form" class="card"><div id="review-fields"></div><p class="fine">Not sure about a number? Leave this open and come back when you have it.</p><div class="review-actions"><button type="submit" class="button primary large">Continue with these details <span aria-hidden="true">→</span></button><button type="button" class="text-button stop-button">Stop this analysis</button></div></form></section>
+    <section id="result" hidden aria-labelledby="result-title"></section>
+    <section id="stopped" class="card state-card" hidden aria-labelledby="stopped-title"><p class="eyebrow">LET’S PAUSE HERE</p><h1 id="stopped-title">We couldn’t finish this answer.</h1><p id="stopped-message"></p><div id="stopped-details"></div><div class="review-actions"><button type="button" class="button primary new-question">Start a new question</button><button type="button" class="button secondary" id="refresh-run">Check again</button></div></section>
+    <details id="support" hidden><summary>Analysis details</summary><p id="support-text"></p></details>
+  </main>
+  <footer>One thoughtful step forward.<span>Estimates to support your judgment. Final decisions stay with you.</span></footer>
+  <noscript>This tool needs JavaScript enabled in your browser.</noscript>
+</body>
+</html>

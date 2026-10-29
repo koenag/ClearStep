@@ -261,9 +261,9 @@ resume. Accepted business facts can be reused on later runs; the workspace itsel
 to one run, survives pause/retry, and is retained for inspection rather than auto-deleted.
 There is no cross-run organized-memory cache or automatic expiry.
 
-Limits now allow 16 turns per agent and 48 model requests per run (previously 6 and 24)
-to accommodate organizing documents and reviewing inputs. The existing cost, time, context,
-and tool-call limits still apply. No paid evaluation was performed for this change, so real
+Default limits now allow 32 turns per agent task, 96 model requests per run, 160 MCP
+tool calls per run, and 600 seconds per execution/resume segment. The existing estimated
+spending budget and context limit still apply. No paid evaluation was performed for this change, so real
 extraction quality and large-batch behavior still require a live trial. Supported financial
 questions remain supplier switching and one promotional event; organizing more kinds of
 records does not add financial models.
@@ -283,3 +283,71 @@ tools. Compaction emits a `context_compacted` event; it does not increase the bu
 guarantee that oversized individual exchanges fit. Abbreviated quotes must be reread
 before use as evidence. A previously `limit_reached` run stays unchanged; launch a new
 run after updating the code.
+
+
+### Avoiding repeated extraction and excessive tool calls
+
+Agent task context now supplies the input contract, accepted/candidate facts, missing
+fields, source inventory, and compact workspace summaries. For initial extraction it also
+supplies up to 12,000 characters of source excerpts (first parts of text/PDF sources), with
+source IDs and exact locations. This is partial coverage, not an assertion that all files
+were read. Larger documents and tables remain accessible through MCP source tools.
+
+The parser can propose up to 25 financial inputs with one `propose_workspace_inputs` MCP
+call instead of a separate call for each input. A same-value proposal reuses an input
+already confirmed by the user within that run; different values still need review.
+The runner pauses as soon as a tool saves clarification questions, avoiding additional
+model turns while waiting for the user. When all financial fields are confirmed and a
+workspace exists, a paused extraction task is marked completed without another LLM
+extraction pass. Completed extraction remains completed on subsequent clarification
+resumes. Risk/scenario tasks are reset so confirmed changes receive fresh checks and math.
+The orchestrator is instructed to use four specialist steps, with no separate confirmation
+agent task. Existing compatible saved plans remain supported.
+
+Execution limits can now be changed in the root `.env` (restart required):
+
+```dotenv
+MAX_AGENT_TURNS=32
+MAX_RUN_CALLS=96
+MAX_TOOL_CALLS=160
+MAX_RUN_SECONDS=600
+```
+
+These are finite safeguards, not a guarantee that every batch finishes. Model/tool counts
+remain cumulative across clarification resumes, and `RUN_BUDGET_USD` is unchanged. Runs
+that previously reached a terminal limit retain that status; start a new analysis after
+restarting the server. No paid live evaluation was performed for this change.
+
+
+### POC supplier dataset v2
+
+The coffee-shop records now explicitly define one supplier comparison unit as one pound
+of roasted coffee: USD/unit = USD/lb and units/month = lb/month. The forward quantity
+is 100 lb/month. The three months of historical exports are explicitly separated from
+the 12-month forecast (November 2026 through October 2027). Both fictional suppliers
+provide written fixed prices/delivery charges for that full period and 50–200 lb orders.
+The proposed supplier's acceptance deadline is separate from the 12-month price term.
+Prices, volumes, transition cost, POS history and event estimates remain numerically
+unchanged. The reference supplier calculation projects $1,880 net savings over 12 months.
+It is a conditional estimate, not a prediction of actual business performance.
+
+For a fresh POC in the UI, start a new question and reselect
+`backend/demo_data/coffee_shop`. Ask: “Would switching from Riverbend Roasters to Cedar
+Crest save money over the next 12 months?” At review, confirm a 12-month horizon. Existing
+uploads and blocked runs keep their original data; a previously confirmed value of 3
+months is not silently overwritten by edited source files. CLI seeding detects the new
+fixture fingerprint automatically. No financial formulas or risk checks were relaxed.
+
+### Conditional financial results and operational caveats
+
+The output is a conditional financial comparison, not a complete supplier-selection
+recommendation. Unverified quality/reliability and assumed equivalent performance are
+reported as informational limitations; uncertainty alone should not block displaying
+calculated savings. Conflicting required inputs, omitted material costs, or known
+constraints that invalidate the calculation still require review and can block it.
+The risk agent classifies findings under these instructions; this is not automatic
+verification of operational suitability. Completed reports include `risk_findings`,
+which are displayed under “Keep these things in mind” and included in saved text answers.
+Previously blocked runs are retained; restart the backend and create a new analysis
+for updated agent instructions to apply. No further demo facts were invented to claim
+that quality or reliability had been verified.
